@@ -173,3 +173,18 @@ def test_scrubbed_env_of_the_real_environment_has_no_token_shaped_value():
     shape = re.compile(r"^[A-Za-z0-9_\-+/=]{24,}$")  # a bare long random-looking string
     for name, value in launch.scrubbed_env().items():
         assert not shape.match(value), name
+
+
+def test_claude_command_without_a_prompt_argument_reads_stdin():
+    cmd = launch.claude_command("ds", None, claude="claude")
+    assert cmd[-2:] == ["--max-turns", "10"] and "--tools" in cmd
+
+
+def test_gateway_url_is_rewritten_in_the_agent_files():
+    path = launch.render_runtime(TOKENS, gateway_url="http://127.0.0.1:54321/mcp")
+    try:
+        for f in (path / ".claude" / "agents").glob("*.md"):
+            text = f.read_text(encoding="utf-8")
+            assert "127.0.0.1:54321/mcp" in text and launch.DEFAULT_GATEWAY_URL not in text
+    finally:
+        launch.cleanup(path)

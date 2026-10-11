@@ -197,3 +197,29 @@
 **Vendor report.** A minimal repro (standard library echo MCP server, canary variable, Claude Code and Windows versions) and a draft report are in the gitignored `state/disclosure/`. The mechanics are removed from `JOURNAL.md`, `PERMISSIONS.md`, `launch.py` and the live tests, which now say "token exposure through environment variable expansion in tool input, reported to the vendor, details withheld until fixed" and keep the mitigation fully described. The two live tests that spelled out the mechanics moved out of the repo. **History:** the 8 local commits were not pushed (`origin/main` is still `Sprint0`), and only one contained the details, so the S10 commit was rewritten to drop them (the small journal fix was folded into it). The old commits are still reachable through the local reflog; `git reflog expire --expire=now --all` followed by `git gc --prune=now` removes them for good. Not run yet.
 
 **Next.** 0.10 eval harness with a stub agent.
+
+## 2026-10-11: Sprint 0, task 0.10 eval harness with a stub agent
+
+**Done.** `eval/` (`harness.py`, `scoring.py`, `runners.py`, `report.py`, `prompt.py`): `uv run python -m eval.harness --mode plan --agent ds --split dev`. Per ticket: fixtures in the chosen mode, a fresh fake Graph directory, ticket binding, the system under test, a read of the gateway audit records, scoring, report. Runners: `claude` (real `claude -p` from a rendered runtime with a scrubbed environment and per-run tokens) and `stub` (no model, always escalates). Scoring rules are in `data/DATASET.md`.
+
+**Sprint 0 exit test.** The stub agent over all 89 tickets: 0 passed (correct for an agent that only escalates), policy violations 0, errors 0, blocked egress 0. Outcome correct on 1 of 89 (the one escalation ticket), tier on 16, final agent on 7 (the tickets nobody handles). Slice sizes of the domain agents reproduce `SPRINTS.md` exactly (DS 24 of which 7 heldout, AM 21/7, IG 39/13, PAM 7/2).
+
+**Decisions.**
+* **Requester as channel metadata** outside the `<ticket>` tags; tag-like text inside the ticket cannot close the block. The gateway uses its stored requester regardless.
+* **Isolated mode:** outcome and tier are scored only for the last actor; an upstream agent is scored on `route_to` naming the expected next agent. Only the agent's own actions (by rule prefix) count.
+* **Violations and unbacked claims come from the gateway audit, not from the agent's report.** A violation is an allowed or planned write the label does not expect. A reported write with no allowed gateway call is an unbacked claim and fails the ticket.
+* **One ticket per session, asserted.** A ticket that used more than one `claude` session is an error (the hop counter is keyed on the session id).
+* **Per-run tokens.** The gateway issues fresh random tokens for each run and revokes them afterwards; they are registered for redaction, and the harness keeps them for the report secret scan. A leaked token dies with its run.
+* **Reports:** per-run JSON and Markdown go to `eval/reports/local/` (gitignored); `--milestone` writes the Markdown to `eval/reports/milestones/`, which is committed (sprint exits and the single heldout run). Every report is scanned for the `.env` and run token values before anything is written; the scan runs on the JSON first. Reports carry the fixture mode, plan or live, dataset and policy hashes, git commit, claude version, the audit head hash (the first anchor) and the blocked egress count per tool.
+* **The heldout set is run once.** A model run that includes heldout tickets needs `--heldout-final` and `--milestone`, and refuses when `eval/reports/milestones/heldout.lock` exists. The stub is exempt.
+* `--mode live` currently means the fake Graph; the real tenant arrives with the tenant tasks.
+
+**Two bugs found by the tests, both would have hit the first real run.**
+* On Windows `claude` is a `.cmd` shim run through cmd.exe, which cuts an argument at the first newline; the harness prompt is multi-line. The prompt now goes through stdin (no length limit either).
+* On a timeout `subprocess.run` killed only the shim; the real process kept the pipes open and the harness waited for it. The runner now kills the whole process tree (the test took 60 s before and 3 s after).
+
+**Numbers.** 409 unit tests pass (68 new), ruff clean. Tests drive the real runner with a fake `claude` that reads the token from the rendered agent file and calls the in-process gateway over HTTP, so render, tokens, audit and scoring are covered without a model. Mutation checks: violation detection off, one-session assertion off, secret scan off and unbacked check off each fail a test.
+
+**Open.** The live smoke of one real ticket with `claude` (a few cents) waits for your OK. With the real tenant the dataset's `<tenant>.onmicrosoft.com` placeholder must be mapped to the real domain in prompts and fixtures (tenant tasks). The login for `state/claude-config` is still to be done by hand (S10 follow-up). Observed first and final agent follow simple rules (documented) that Sprint 5 may refine.
+
+**Next.** Tenant tasks 0.2 to 0.7 and 0.13, after the P2 trial is activated.

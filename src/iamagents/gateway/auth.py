@@ -17,6 +17,19 @@ class TokenRegistry:
     def __init__(self, tokens: Mapping[str, str]):
         self._tokens = dict(tokens)
 
+    def replace(self, tokens: Mapping[str, str]) -> None:
+        """Swap the whole token set (per-run tokens). Old tokens stop working at once."""
+        values = list(tokens.values())
+        if any(not v for v in values) or len(set(values)) != len(values):
+            raise ValueError("tokens must be non-empty and distinct")
+        self._tokens = dict(tokens)
+
+    def clear(self) -> None:
+        self._tokens = {}
+
+    def agents(self) -> list[str]:
+        return sorted(self._tokens)
+
     def authenticate(self, header: str | None) -> str | None:
         """Return the agent id for a valid Authorization header, else None."""
         presented = parse_bearer(header)

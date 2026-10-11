@@ -131,3 +131,71 @@ def test_admin_endpoint_is_off_without_a_configured_token(tmp_path):
         ).status_code
         == 401
     )
+
+
+# --- per-run tokens (eval harness): a leaked token dies with its run
+
+
+def test_run_tokens_replace_the_old_tokens_and_end_with_revoke(served):
+    gw, url = served
+    old = TOKENS["ds"]
+    tokens = gw.issue_run_tokens()
+    assert set(tokens) == {f"GW_TOKEN_{a}" for a in ("DS", "AM", "IG", "PAM", "TL")}
+    assert len(set(tokens.values())) == 5 and old not in tokens.values()
+    assert gw.registry.authenticate(f"Bearer {tokens['GW_TOKEN_DS']}") == "ds"
+    assert gw.registry.authenticate(f"Bearer {old}") is None  # the static token no longer works
+
+    gw.bind_ticket("T-1")
+    res = with_session(
+        url, tokens["GW_TOKEN_DS"], lambda s: call(s, "get_user", {"ticket_id": "T-1", "upn": ZOE})
+    )
+    assert res["ok"]
+
+    gw.revoke_run_tokens()
+    import httpx
+
+    r = httpx.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {tokens['GW_TOKEN_DS']}",
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+        },
+        json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+    )
+    assert r.status_code == 401  # revoked: the run is over
+
+
+def test_run_tokens_never_reach_the_audit_log_or_the_redaction_registry_leaks(served):
+    gw, _ = served
+    tokens = gw.issue_run_tokens()
+    gw.revoke_run_tokens()
+    text = gw.audit.path.read_text(encoding="utf-8")
+    assert not any(v in text for v in tokens.values())
+    assert gw.run_token_values == set(tokens.values())  # kept in memory for the report secret scan
+    gw.audit.append({"ts": "t", "reason": f"oops {tokens['GW_TOKEN_AM']}"})
+    assert tokens["GW_TOKEN_AM"] not in gw.audit.path.read_text(encoding="utf-8")  # redacted
+
+
+def test_registry_rejects_duplicate_or_empty_tokens():
+    import pytest
+
+    from iamagents.gateway.auth import TokenRegistry
+
+    reg = TokenRegistry({})
+    with pytest.raises(ValueError):
+        reg.replace({"ds": "same", "am": "same"})
+    with pytest.raises(ValueError):
+        reg.replace({"ds": ""})
+
+
+def test_graph_factory_can_be_swapped_per_ticket(served):
+    from iamagents.gateway.graph.fake import FakeGraphFactory
+
+    gw, _ = served
+    gw.bind_ticket("T-1")
+    gw.call("ds", "get_user", {"ticket_id": "T-1", "upn": ZOE})
+    first = gw.graph_factory.directory
+    assert first.calls
+    gw.set_graph_factory(FakeGraphFactory())
+    assert gw.graph_factory.directory is not first and gw.graph_factory.directory.calls == []

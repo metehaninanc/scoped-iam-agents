@@ -36,7 +36,7 @@ class _BearerGate:
 
 
 def create_mcp_app(gateway: Gateway):
-    registry = TokenRegistry(gateway.settings.tokens)
+    registry = gateway.registry
 
     def agent_of(ctx: ServerRequestContext) -> str | None:
         headers = ctx.request.headers if ctx.request is not None else {}
@@ -66,3 +66,37 @@ def create_mcp_app(gateway: Gateway):
     app = server.streamable_http_app(stateless_http=True, json_response=True)
     app.add_middleware(_BearerGate, registry=registry, gateway=gateway)
     return app
+
+
+class RunningServer:
+    def __init__(self, url: str, server, thread):
+        self.url, self._server, self._thread = url, server, thread
+
+    def stop(self) -> None:
+        self._server.should_exit = True
+        self._thread.join(timeout=10)
+
+
+def serve_in_thread(gateway: Gateway, host: str = "127.0.0.1", port: int = 0) -> RunningServer:
+    """Serve the MCP app in a background thread (the eval harness). Port 0 picks a free port."""
+    import socket
+    import threading
+    import time
+
+    import uvicorn
+
+    if port == 0:
+        with socket.socket() as s:
+            s.bind((host, 0))
+            port = s.getsockname()[1]
+    server = uvicorn.Server(
+        uvicorn.Config(create_mcp_app(gateway), host=host, port=port, log_level="warning")
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 15
+    while not server.started and time.time() < deadline:
+        time.sleep(0.02)
+    if not server.started:
+        raise RuntimeError("the gateway server did not start")
+    return RunningServer(f"http://{host}:{port}/mcp", server, thread)

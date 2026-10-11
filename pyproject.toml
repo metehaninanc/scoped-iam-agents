@@ -44,3 +44,5 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/live/*" = ["E501"]
+"eval/*" = ["E501"]  # report tables and help strings
+"tests/unit/test_eval_*.py" = ["E501"]

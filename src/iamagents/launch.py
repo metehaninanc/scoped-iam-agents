@@ -57,6 +57,7 @@ ENV_ALLOW = frozenset(
     }
 )
 
+DEFAULT_GATEWAY_URL = "http://127.0.0.1:8765/mcp"  # as written in the agent files
 RUNTIME_ROOT = ROOT / "state" / "runtime"  # gitignored; trust is inherited from the repo
 _PLACEHOLDER = re.compile(r"\$\{(GW_TOKEN_[A-Z]+)\}")
 _HOOK_PREFIX = "uv run --project .. python"
@@ -102,6 +103,7 @@ def render_runtime(
     dest: Path | None = None,
     source: Path = ROOT / "runtime" / ".claude",
     python: str | None = None,
+    gateway_url: str | None = None,
 ) -> Path:
     """Copy the runtime config to a fresh directory and fill in the gateway tokens.
 
@@ -121,14 +123,20 @@ def render_runtime(
             "from the repo"
         )
     try:
-        return _render_into(dest, tokens, source, python)
+        return _render_into(dest, tokens, source, python, gateway_url)
     except BaseException:
         if created:  # never leave a half rendered directory behind: it may already hold tokens
             shutil.rmtree(dest, ignore_errors=True)
         raise
 
 
-def _render_into(dest: Path, tokens: Mapping[str, str], source: Path, python: str | None) -> Path:
+def _render_into(
+    dest: Path,
+    tokens: Mapping[str, str],
+    source: Path,
+    python: str | None,
+    gateway_url: str | None = None,
+) -> Path:
     claude_dir = dest / ".claude"
     shutil.copytree(source, claude_dir, dirs_exist_ok=True)
     for agent_file in (claude_dir / "agents").glob("*.md"):
@@ -140,7 +148,10 @@ def _render_into(dest: Path, tokens: Mapping[str, str], source: Path, python: st
                 raise KeyError(f"no token for {key} (needed by {name})")
             return tokens[key]
 
-        agent_file.write_text(_PLACEHOLDER.sub(fill, text), encoding="utf-8")
+        text = _PLACEHOLDER.sub(fill, text)
+        if gateway_url:
+            text = text.replace(DEFAULT_GATEWAY_URL, gateway_url)
+        agent_file.write_text(text, encoding="utf-8")
     interpreter = (python or sys.executable).replace("\\", "/")
     settings_path = claude_dir / "settings.json"
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -159,7 +170,7 @@ def cleanup(runtime_dir: Path) -> None:
 
 def claude_command(
     agent: str,
-    prompt: str,
+    prompt: str | None,
     *,
     model: str = "haiku",
     max_turns: int = 10,
@@ -169,8 +180,10 @@ def claude_command(
     """Argument list for one `claude -p` run of `agent`.
 
     `--tools` takes a variable number of values, so it is placed before another option and
-    never directly before the prompt. Run it with stdin closed (`stdin=DEVNULL`): `claude -p`
-    otherwise waits 3 seconds for input.
+    never directly before the prompt. With `prompt=None` the prompt is read from stdin, which
+    the harness uses: on Windows `claude` is a `.cmd` shim run through cmd.exe, which cuts an
+    argument at its first newline. Without a prompt argument and without piped input `claude -p`
+    waits 3 seconds for stdin, so callers either pass `input=` or close stdin.
     """
     exe = claude or shutil.which("claude")
     if exe is None:
@@ -190,5 +203,5 @@ def claude_command(
         "--max-turns",
         str(max_turns),
         *extra,
-        prompt,
+        *([prompt] if prompt is not None else []),
     ]

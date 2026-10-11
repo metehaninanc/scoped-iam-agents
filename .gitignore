@@ -6,11 +6,12 @@ certs/
 secrets/
 raw-batches/
 *.sqlite
-eval/reports/*.json
 .venv/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
-eval/reports/*.md
 state/
 runtime/.state/
+eval/reports/*
+!eval/reports/milestones/
+eval/reports/milestones/*.json

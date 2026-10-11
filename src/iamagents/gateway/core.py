@@ -11,11 +11,13 @@ admin endpoint in `admin.py`. It is not an MCP tool, so a model cannot change it
 """
 
 import logging
+import secrets as _secrets
 from collections.abc import Callable
 from datetime import UTC, datetime
 
 from ..services.mock import MockServices
 from .audit import AuditLog
+from .auth import TokenRegistry
 from .config import Settings
 from .egress import EgressGuard
 from .graph.base import GraphClient, GraphClientFactory
@@ -45,6 +47,10 @@ class Gateway:
         now: Callable[[], str] = _utc_now,
     ):
         self.settings = settings
+        self.registry = TokenRegistry(settings.tokens)
+        self.run_token_values: set[str] = (
+            set()
+        )  # every run token issued; for the report secret scan
         self.policy = policy
         self.services = services
         self.graph_factory = graph_factory
@@ -84,6 +90,26 @@ class Gateway:
         if self.hop_exceeded:
             return False, "hop_limit_exceeded"
         return True, "ok"
+
+    def issue_run_tokens(self, agents: tuple[str, ...] = ("ds", "am", "ig", "pam", "tl")) -> dict:
+        """Fresh random tokens for one run, as {GW_TOKEN_<AGENT>: value}. They replace all
+        earlier tokens, and `revoke_run_tokens` ends them: a token that leaks dies with its run."""
+        tokens = {a: _secrets.token_urlsafe(32) for a in agents}
+        self.registry.replace(tokens)
+        for value in tokens.values():
+            self.run_token_values.add(value)
+            self.secrets.register(value)  # blocked in results, redacted in audit records and logs
+        self._record("harness", None, "issue_run_tokens", "admin", f"agents={','.join(agents)}")
+        return {f"GW_TOKEN_{a.upper()}": v for a, v in tokens.items()}
+
+    def revoke_run_tokens(self) -> None:
+        self.registry.clear()
+        self._record("harness", None, "revoke_run_tokens", "admin", "revoked")
+
+    def set_graph_factory(self, factory) -> None:
+        """Swap the Graph backend, for example a fresh fake directory per ticket."""
+        self.graph_factory = factory
+        self._graphs = {}
 
     # --- tools ---
 
