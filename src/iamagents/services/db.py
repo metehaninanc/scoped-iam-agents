@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS outbox (
     recipient_upn TEXT NOT NULL,
     kind TEXT NOT NULL,
     secret TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    state TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    delivered_at TEXT
 );
 CREATE TABLE IF NOT EXISTS fixture_loads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

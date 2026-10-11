@@ -17,9 +17,11 @@ from datetime import UTC, datetime
 from ..services.mock import MockServices
 from .audit import AuditLog
 from .config import Settings
+from .egress import EgressGuard
 from .graph.base import GraphClient, GraphClientFactory
 from .policy import Policy
 from .protection import ProtectionChecker
+from .secrets_registry import SECRETS, install_log_redaction
 from .tools import TOOLS, Outcome, ToolDef, deny
 
 log = logging.getLogger("iamagents.gateway")
@@ -47,6 +49,9 @@ class Gateway:
         self.audit = audit
         self.protection = protection or ProtectionChecker(settings.protection_ttl_seconds)
         self.now = now
+        self.secrets = SECRETS
+        self.egress = EgressGuard(self.secrets)
+        install_log_redaction(self.secrets)
         self.active_ticket: str | None = None
         self.intended_calls: list[dict] = []
         self._graphs: dict[str, GraphClient] = {}
@@ -79,6 +84,25 @@ class Gateway:
         ticket_id = args.get("ticket_id") if isinstance(args.get("ticket_id"), str) else None
         log.debug("call agent=%s tool=%s ticket=%s", agent, tool, ticket_id)
         outcome = self._dispatch(agent, tool, args, ticket_id)
+        violations = self.egress.scan(outcome.result)
+        if violations:
+            # A tool returned something it must not. Fail closed: block the whole result.
+            log.error("egress blocked tool=%s kinds=%s", tool, sorted({v.kind for v in violations}))
+            outcome = Outcome(
+                {
+                    "ok": False,
+                    "decision": "denied",
+                    "reason": "internal_error",
+                    "message": "Internal error.",
+                },
+                "blocked_egress",
+                outcome.rule_id,
+                "; ".join(sorted({str(v) for v in violations})),
+                outcome.iso27001,
+                outcome.target,
+                outcome.graph_request_id,
+                outcome.tier,
+            )
         self._record(
             agent,
             outcome.rule_id,
@@ -127,6 +151,16 @@ class Gateway:
                 None,
                 "internal_error",
             )
+
+    # --- retention ---
+
+    def run_retention(self) -> dict:
+        """Purge expired audit records and wipe undelivered outbox secrets past their TTL."""
+        days = self.settings.retention_days or self.policy.audit.retention_days
+        now = self.now()
+        purged = self.audit.purge(days, datetime.fromisoformat(now))
+        expired = self.services.outbox.expire(now, self.settings.outbox_ttl_hours)
+        return {"audit_purged": purged, "outbox_expired": expired, "retention_days": days}
 
     # --- audit ---
 

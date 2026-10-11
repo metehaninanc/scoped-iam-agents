@@ -217,3 +217,8 @@ def test_outbox_secret_only_through_open_message(services):
     assert "S3cret-Pw!" not in repr(meta)
     assert "secret" not in meta[0]
     assert services.outbox.open_message(msg_id)["secret"] == "S3cret-Pw!"
+    # delivered once, then wiped
+    assert services.outbox.open_message(msg_id)["secret"] is None
+    assert services.outbox.metadata("IAM-002")[0]["state"] == "delivered"
+    rows = [dict(r) for r in services.db.conn.execute("SELECT * FROM outbox")]
+    assert "S3cret-Pw!" not in repr(rows)

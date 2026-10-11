@@ -107,3 +107,19 @@
 **Open.** Real `msgraph-sdk` client and its debug logging behaviour (S1 should check that the password stays out of kiota logs). The gateway process and harness will share the mock SQLite file (`MOCK_DB_PATH`); to be wired in 0.10 and 0.12.
 
 **Next.** 0.11 data protection basics.
+
+## 2026-10-11: Sprint 0, task 0.11 data protection basics
+
+**Done.** Egress guard on every tool result, secret registry with log, audit and result redaction, outbox lifecycle, audit retention with an in-chain checkpoint, `/admin/stats` and `/admin/purge`, `DATA_PROTECTION.md` updated with the implemented controls.
+
+**Decisions.**
+* **Egress guard fails closed.** A hit blocks the whole result, the agent sees a generic internal error, the audit records `blocked_egress` with the kind and path (never the value). A hit means a tool bug, not an agent mistake.
+* **Precision over coverage.** False positives would silently fail tickets. Keys match by whole camelCase or snake_case segment, not substring, with an explicit safe list. Values need a strict IPv4 or phone shape, after masking GUIDs, ISO dates and timestamps. Switching the key match to substring broke 11 tests, among them the gateway's own results, so the negative set earns its place. Known gaps: IPv6, dot-separated phone numbers.
+* **Blocked results are counted per tool** from the audit log (`/admin/stats`), so the eval report can show false positives as their own number.
+* **Secrets in the outbox.** Wiped as soon as they are read through the outbox API; undelivered ones expire after 24 hours (`OUTBOX_TTL_HOURS`).
+* **Retention checkpoint stays inside the chain.** The audit chain detects partial or accidental edits, not a full consistent rewrite; a test pins that limit. First anchor: the head hash (`AuditLog.head_hash`) is recorded in every eval report and in every journal entry for a live run. External attestation remains a Sprint 6 option.
+* The `Secret` wrapper stays the primary control; the registry is a second layer, in memory only.
+
+**Numbers.** 194 unit tests pass (111 new in this task, including a 36 entry negative set), ruff clean. Mutation checks: substring key matching fails 11 tests, unmasked dates fail 4, disabled guard fails 3.
+
+**Next.** 0.12 runtime hooks.

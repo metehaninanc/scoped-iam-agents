@@ -49,6 +49,15 @@ class Clock:
         return self.t
 
 
+@pytest.fixture(autouse=True)
+def clean_secret_registry():
+    from iamagents.gateway.secrets_registry import SECRETS
+
+    SECRETS.clear()
+    yield
+    SECRETS.clear()
+
+
 @pytest.fixture
 def make_gateway(tmp_path):
     made = []

@@ -249,6 +249,7 @@ def reset_password(gw: "Gateway", agent: str, ticket: dict, args: dict) -> Outco
         )
 
     password = generate_temp_password()
+    gw.secrets.register(password.reveal())  # second layer: egress guard, log and audit redaction
     try:
         request_id = graph.reset_password(target, password)
     except GraphForbidden as e:

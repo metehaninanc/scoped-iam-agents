@@ -36,6 +36,8 @@ class Settings:
     audit_path: Path = ROOT / "state" / "audit.jsonl"
     mock_db_path: str = str(ROOT / "state" / "mock.sqlite")
     protection_ttl_seconds: float = 30.0
+    outbox_ttl_hours: float = 24.0  # undelivered secrets are wiped after this
+    retention_days: int | None = None  # None: use audit.retention_days from policy.yaml
 
     def __post_init__(self):
         if self.mode not in MODES:
@@ -58,6 +60,10 @@ class Settings:
             "tokens": tokens,
             "admin_token": env.get("GW_ADMIN_TOKEN") or None,
         }
+        if env.get("LOG_RETENTION_DAYS"):
+            kwargs["retention_days"] = int(env["LOG_RETENTION_DAYS"])
+        if env.get("OUTBOX_TTL_HOURS"):
+            kwargs["outbox_ttl_hours"] = float(env["OUTBOX_TTL_HOURS"])
         if env.get("AUDIT_PATH"):
             kwargs["audit_path"] = Path(env["AUDIT_PATH"])
         if env.get("MOCK_DB_PATH"):

@@ -11,6 +11,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from .audit import blocked_egress_by_tool
 from .auth import parse_bearer
 from .core import Gateway
 
@@ -45,8 +46,32 @@ def create_admin_app(gateway: Gateway) -> Starlette:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         return JSONResponse({"active_ticket": gateway.active_ticket, "mode": gateway.settings.mode})
 
+    async def stats(request: Request):
+        # For the eval harness: reports record the audit head hash (the first anchor, see
+        # audit.py) and the blocked_egress count per tool (false positives show up here).
+        if not authorised(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        records = gateway.audit.read_all()
+        return JSONResponse(
+            {
+                "mode": gateway.settings.mode,
+                "active_ticket": gateway.active_ticket,
+                "audit_head": gateway.audit.head_hash,
+                "audit_records": len(records),
+                "blocked_egress": blocked_egress_by_tool(records),
+                "intended_calls": gateway.intended_calls,
+            }
+        )
+
+    async def purge(request: Request):
+        if not authorised(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return JSONResponse(gateway.run_retention())
+
     return Starlette(
         routes=[
+            Route("/admin/stats", stats, methods=["GET"]),
+            Route("/admin/purge", purge, methods=["POST"]),
             Route("/admin/bind", bind, methods=["POST"]),
             Route("/admin/unbind", unbind, methods=["POST"]),
             Route("/admin/status", status, methods=["GET"]),

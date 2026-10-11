@@ -34,6 +34,7 @@ async def _serve() -> None:
     load_env_file(ROOT / ".env")
     settings = Settings.from_env()
     gateway = build_gateway(settings)
+    gateway.run_retention()
     mcp_port = int(os.environ.get("GATEWAY_PORT", "8765"))
     admin_port = int(os.environ.get("GATEWAY_ADMIN_PORT", "8766"))
     servers = [
