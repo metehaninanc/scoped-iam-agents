@@ -123,3 +123,22 @@
 **Numbers.** 194 unit tests pass (111 new in this task, including a 35 entry negative set), ruff clean. Mutation checks: substring key matching fails 11 tests, unmasked dates fail 4, disabled guard fails 3.
 
 **Next.** 0.12 runtime hooks.
+
+## 2026-10-11: Sprint 0, task 0.12 runtime hooks and token issuing
+
+**Done.** Four hook modules in `src/iamagents/hooks/` (`domain_guard`, `hop_limit`, `trace`, `result_schema`) with shared helpers, `settings.json` updated (Stop hook for a domain agent running as main agent, dispatch matcher `Agent|Task` until S10 pins the tool name), `python -m iamagents.gateway.tokens` for token issuing into `.env`, gateway-side hop limit, config tests that pin the runtime isolation settings.
+
+**Decisions.**
+* **The gateway enforces the hop limit itself.** It counts distinct domain agent identities per active ticket (first agent plus `reroute_limit` reroutes, so at most 3), denies a 4th identity (`hop_limit_exceeded`, audited) and `close_allowed()` refuses closing a ticket that exceeded it. The `close_ticket` tool arrives in Sprint 5 and must call `close_allowed()`. Tested with the hook skipped.
+* **Hop hook denies from the 4th dispatch**, keyed on `session_id`. ASSUMPTION written in the code: one ticket per `claude -p` session. The harness in 0.10 starts a fresh session per ticket and must assert it.
+* **Hooks read the tool lists from `policy.yaml`**, the same file the gateway uses, so they cannot drift. `domain_guard` fails closed when `agent_type` is missing. Where `agent_type` is absent for a main agent started with `--agent`, the fallback (an `IAM_AGENT` env var) is decided in S10.
+* **Trace keeps decision fields only** (`ok`, `decision`, `rule_id`, `tier`, `reason`, `route_to`), never `data`. Retention helper included.
+* **result_schema retries once, then `schema_violation`.** After the one allowed retry the hook lets the agent stop and writes a `schema_violation` event to the trace. The scoring counts it as a failure, never a pass. The message text is not logged.
+* **Token isolation is configuration, not process isolation.** All agents share one Claude Code process, so all `GW_TOKEN_*` sit in one environment. Only the denial of Bash, Read, Write, Edit, Glob, Grep, WebFetch and WebSearch keeps an agent away from another agent's token. `tests/unit/test_runtime_config.py` fails if one is missing from the deny list or appears in any agent's `tools`, and checks that agent files and `policy.yaml` list the same tools. Documented as a known limit in `PERMISSIONS.md` section 2.
+* Token issuing never prints values, keeps existing tokens unless `--rotate`, and checks that all are distinct.
+
+**Numbers.** 300 unit tests pass (106 new), ruff clean. Hook subprocess tests run the modules as `settings.json` does, one of them with the exact `uv run --project ..` command. Mutation checks: gateway hop check off fails 1, `Read` removed from the deny list fails 1, `Bash` added to ds fails 2.
+
+**Open for S10.** Hook input in headless mode (`agent_type` for a main agent, `tool_response` shape, dispatch tool name `Agent` or `Task`), `uv run` startup latency per hook call.
+
+**Next.** Spike S10 (needs a real `claude -p` run; will ask first), then 0.10 eval harness.

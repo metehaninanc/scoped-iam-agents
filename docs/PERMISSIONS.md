@@ -29,6 +29,8 @@ This document defines what each agent is allowed to do in the Entra tenant, whic
 
 There is one MCP server (the gateway). It holds the four certificates and selects the identity from the calling agent's bearer token. Each Claude Code agent file in `runtime/.claude/agents/` declares its own inline connection to the gateway with its own token, so the binding between agent and identity is fixed in configuration, outside anything the model can influence. Agents only hold an MCP token, so a compromised agent cannot reach Graph directly or borrow another agent's identity. In the Entra audit log each change shows the specific agent app as the actor.
 
+**Known limit: token isolation is configuration, not process isolation.** All agents run in one Claude Code process, so every `GW_TOKEN_*` is in the same environment. What stops an agent from reading another agent's token or calling the gateway directly is the denial of `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `WebFetch` and `WebSearch` in `runtime/.claude/settings.json`, together with agent files that list only their own gateway tools. If one of those tools were allowed, an agent could read the environment or the `.env` file, or send HTTP requests with another agent's token. `tests/unit/test_runtime_config.py` fails if any of them is missing from the deny list or appears in an agent's `tools`. Real process isolation (one process and environment per agent) would remove the limit and is not part of this prototype. The gateway still enforces tool lists per token, ticket binding and the hop limit, so a stolen token is limited to that agent's own tools.
+
 ## 3. Three enforcement layers
 
 | Layer | Enforced by | Strength |

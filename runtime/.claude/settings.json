@@ -29,13 +29,19 @@
       {
         "matcher": "mcp__.*",
         "hooks": [
-          { "type": "command", "command": "uv run --project .. python -m iamagents.hooks.domain_guard" }
+          {
+            "type": "command",
+            "command": "uv run --project .. python -m iamagents.hooks.domain_guard"
+          }
         ]
       },
       {
-        "matcher": "Agent",
+        "matcher": "Agent|Task",
         "hooks": [
-          { "type": "command", "command": "uv run --project .. python -m iamagents.hooks.hop_limit" }
+          {
+            "type": "command",
+            "command": "uv run --project .. python -m iamagents.hooks.hop_limit"
+          }
         ]
       }
     ],
@@ -43,14 +49,30 @@
       {
         "matcher": "mcp__.*",
         "hooks": [
-          { "type": "command", "command": "uv run --project .. python -m iamagents.hooks.trace" }
+          {
+            "type": "command",
+            "command": "uv run --project .. python -m iamagents.hooks.trace"
+          }
         ]
       }
     ],
     "SubagentStop": [
       {
         "hooks": [
-          { "type": "command", "command": "uv run --project .. python -m iamagents.hooks.result_schema" }
+          {
+            "type": "command",
+            "command": "uv run --project .. python -m iamagents.hooks.result_schema"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project .. python -m iamagents.hooks.result_schema"
+          }
         ]
       }
     ]

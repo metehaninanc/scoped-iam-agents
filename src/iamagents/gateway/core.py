@@ -26,6 +26,8 @@ from .tools import TOOLS, Outcome, ToolDef, deny
 
 log = logging.getLogger("iamagents.gateway")
 
+DOMAIN_AGENTS = ("ds", "am", "ig", "pam")
+
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
@@ -54,6 +56,9 @@ class Gateway:
         install_log_redaction(self.secrets)
         self.active_ticket: str | None = None
         self.intended_calls: list[dict] = []
+        # Domain agent identities that acted on the active ticket, in order of first call.
+        self.ticket_agents: list[str] = []
+        self.hop_exceeded = False
         self._graphs: dict[str, GraphClient] = {}
 
     # --- admin path (not exposed over MCP) ---
@@ -61,12 +66,24 @@ class Gateway:
     def bind_ticket(self, ticket_id: str) -> None:
         self.active_ticket = ticket_id
         self.intended_calls = []
+        self.ticket_agents = []
+        self.hop_exceeded = False
         self._record("harness", None, "bind_ticket", "admin", "bound", ticket_id=ticket_id)
 
     def unbind_ticket(self) -> None:
         previous = self.active_ticket
         self.active_ticket = None
         self._record("harness", None, "unbind_ticket", "admin", "unbound", ticket_id=previous)
+
+    @property
+    def max_domain_agents(self) -> int:
+        return int(self.policy.global_.get("reroute_limit", 2)) + 1
+
+    def close_allowed(self) -> tuple[bool, str]:
+        """Checked by `close_ticket` (Sprint 5): a ticket over the hop limit is never closed."""
+        if self.hop_exceeded:
+            return False, "hop_limit_exceeded"
+        return True, "ok"
 
     # --- tools ---
 
@@ -133,6 +150,15 @@ class Gateway:
             return deny("no_active_ticket", "No ticket is active.")
         if ticket_id != self.active_ticket:
             return deny("ticket_mismatch", "ticket_id does not match the active ticket.")
+        if agent in DOMAIN_AGENTS and agent not in self.ticket_agents:
+            # The hop_limit hook is not the boundary, so the gateway enforces the same limit:
+            # first domain agent plus `reroute_limit` reroutes means at most 3 identities.
+            if len(self.ticket_agents) >= self.max_domain_agents:
+                self.hop_exceeded = True
+                return deny(
+                    "hop_limit_exceeded", "Too many agents have handled this ticket; escalate."
+                )
+            self.ticket_agents.append(agent)
         ticket = self.services.tickets.get(ticket_id)
         if ticket is None:
             return deny("unknown_ticket", "The active ticket does not exist.")

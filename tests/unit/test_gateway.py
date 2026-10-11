@@ -498,3 +498,34 @@ def test_audit_records_carry_the_policy_fields(gw):
 
 def test_admin_token_differs_from_agent_tokens():
     assert ADMIN_TOKEN not in TOKENS.values()
+
+
+# --- hop limit (the gateway enforces it even when the hook is skipped) ---
+
+
+def test_hop_state_resets_on_bind_and_close_is_allowed_by_default(gw):
+    assert gw.max_domain_agents == 3
+    gw.bind_ticket("T-1")
+    gw.call("ds", "get_user", {"ticket_id": "T-1", "upn": ZOE})
+    gw.call("am", "get_user", {"ticket_id": "T-1", "upn": ZOE})
+    assert gw.ticket_agents == ["ds", "am"] and gw.close_allowed() == (True, "ok")
+    gw.bind_ticket("T-2")
+    assert gw.ticket_agents == [] and not gw.hop_exceeded
+
+
+def test_team_lead_and_denied_tool_calls_do_not_count_as_hops(gw):
+    gw.bind_ticket("T-1")
+    gw.call("tl", "read_ticket", {"ticket_id": "T-1"})  # tl has no implemented tools yet
+    gw.call("am", "reset_password", {"ticket_id": "T-1", "upn": ZOE})  # not on am's list
+    assert gw.ticket_agents == []
+
+
+def test_hop_exceeded_is_sticky_until_the_next_ticket(gw):
+    gw.policy.identities["pam"].tools = ["get_user"]
+    gw.policy.rule_for("ds", "get_user").agent = ["ds", "am", "ig", "pam"]
+    gw.bind_ticket("T-1")
+    for agent in ("ds", "am", "ig", "pam"):
+        gw.call(agent, "get_user", {"ticket_id": "T-1", "upn": ZOE})
+    assert gw.hop_exceeded and gw.close_allowed()[0] is False
+    gw.bind_ticket("T-2")
+    assert gw.close_allowed() == (True, "ok")

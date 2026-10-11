@@ -1,10 +1,21 @@
+import asyncio
+import json
+import socket
+import threading
+import time
+
+import httpx2
 import pytest
+import uvicorn
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
 
 from iamagents.gateway.audit import AuditLog
 from iamagents.gateway.config import ROOT, Settings
 from iamagents.gateway.core import Gateway
 from iamagents.gateway.graph.fake import FakeGraphFactory
 from iamagents.gateway.policy import Policy
+from iamagents.gateway.server import create_mcp_app
 from iamagents.services.mock import MockServices
 
 DOMAIN = "<tenant>.onmicrosoft.com"
@@ -102,3 +113,44 @@ def live_gw(make_gateway):
     add_ticket(g.services, "T-1", "zoe.martin")
     add_ticket(g.services, "T-2", "arjun.mehta")
     return g
+
+
+@pytest.fixture
+def served(make_gateway):
+    gw = make_gateway("plan")
+    add_ticket(gw.services, "T-1", "zoe.martin")
+    add_ticket(gw.services, "T-2", "arjun.mehta")
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(
+        uvicorn.Config(create_mcp_app(gw), host="127.0.0.1", port=port, log_level="warning")
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 10
+    while not server.started and time.time() < deadline:
+        time.sleep(0.02)
+    assert server.started
+    yield gw, f"http://127.0.0.1:{port}/mcp"
+    server.should_exit = True
+    thread.join(timeout=5)
+
+
+def with_session(url: str, token: str, fn):
+    async def run():
+        client = httpx2.AsyncClient(headers={"Authorization": f"Bearer {token}"})
+        async with streamable_http_client(url, http_client=client) as streams:
+            async with ClientSession(streams[0], streams[1]) as session:
+                await session.initialize()
+                return await fn(session)
+
+    return asyncio.run(run())
+
+
+def call(session, name, args):
+    async def go():
+        res = await session.call_tool(name, args)
+        return json.loads(res.content[0].text)
+
+    return go()

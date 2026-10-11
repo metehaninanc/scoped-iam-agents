@@ -60,6 +60,8 @@ def create_admin_app(gateway: Gateway) -> Starlette:
                 "audit_records": len(records),
                 "blocked_egress": blocked_egress_by_tool(records),
                 "intended_calls": gateway.intended_calls,
+                "domain_agents": gateway.ticket_agents,
+                "hop_exceeded": gateway.hop_exceeded,
             }
         )
 

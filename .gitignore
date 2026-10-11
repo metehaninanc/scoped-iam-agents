@@ -13,3 +13,4 @@ __pycache__/
 .ruff_cache/
 eval/reports/*.md
 state/
+runtime/.state/
