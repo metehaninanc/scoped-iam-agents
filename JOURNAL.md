@@ -120,6 +120,6 @@
 * **Retention checkpoint stays inside the chain.** The audit chain detects partial or accidental edits, not a full consistent rewrite; a test pins that limit. First anchor: the head hash (`AuditLog.head_hash`) is recorded in every eval report and in every journal entry for a live run. External attestation remains a Sprint 6 option.
 * The `Secret` wrapper stays the primary control; the registry is a second layer, in memory only.
 
-**Numbers.** 194 unit tests pass (111 new in this task, including a 36 entry negative set), ruff clean. Mutation checks: substring key matching fails 11 tests, unmasked dates fail 4, disabled guard fails 3.
+**Numbers.** 194 unit tests pass (111 new in this task, including a 35 entry negative set), ruff clean. Mutation checks: substring key matching fails 11 tests, unmasked dates fail 4, disabled guard fails 3.
 
 **Next.** 0.12 runtime hooks.
