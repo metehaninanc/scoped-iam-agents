@@ -9,3 +9,6 @@ raw-batches/
 eval/reports/*.json
 .venv/
 __pycache__/
+.pytest_cache/
+.ruff_cache/
+eval/reports/*.md

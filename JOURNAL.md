@@ -57,3 +57,16 @@
 **Why it matters.** The platform vendor sets the autonomous agent line at reader level. This project's claim becomes concrete: how far a gateway with external authority records can safely move that line, and which actions still need a human.
 
 **Next.** Sprint 0 build. New tasks 0.12 (runtime skeleton and hooks) and 0.13 (Agent ID trial), new spikes S9 and S10.
+
+## 2026-10-11: Sprint 0, task 0.1 scaffold
+
+**Done.** `pyproject.toml` (Python 3.12 pinned in `.python-version`, hatchling, `src/iamagents` layout), package skeleton for gateway, services, hooks and eval, `.env.example` with placeholders only, ruff and pytest config, a layout smoke test. `uv run pytest` and `uv run ruff check` pass.
+
+**Decisions.**
+* `pytest` runs `tests/unit` only and deselects the `live` marker by default, so a plain run can never touch the tenant. Anything under `tests/live` is marked `live` automatically.
+* `data/` is excluded from ruff. The two dataset scripts use long table lines (190 line-length findings) and rewriting them has no value.
+* The tenant is Entra ID Free until the P2 trial is activated right before the tenant tasks. Everything up to spike S10 stays tenant free.
+
+**Numbers.** 5 tests, 0 ruff findings, dataset validator unchanged.
+
+**Next.** 0.8 mock services.
