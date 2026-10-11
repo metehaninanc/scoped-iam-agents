@@ -3,7 +3,7 @@ name: team-lead
 description: Triage lead for IAM tickets. Routes each ticket to one domain agent, checks the result against gateway records, then closes or escalates. Never changes the directory.
 model: sonnet
 tools:
-  - Agent
+  - Agent(ds, am, ig, pam)
   - Skill
   - mcp__gw-tl__read_ticket
   - mcp__gw-tl__read_gateway_records

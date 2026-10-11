@@ -142,3 +142,42 @@
 **Open for S10.** Hook input in headless mode (`agent_type` for a main agent, `tool_response` shape, dispatch tool name `Agent` or `Task`), `uv run` startup latency per hook call.
 
 **Next.** Spike S10 (needs a real `claude -p` run; will ask first), then 0.10 eval harness.
+
+## 2026-10-11: Spike S10, Claude Code mechanics (local, no tenant)
+
+**Done.** About 45 short `claude -p` runs (exploration plus the live test file) (Claude Code 2.1.273 on Windows, `--model haiku`, which resolved to `claude-haiku-4-5-20251001`) against the local gateway on the fake Graph. Reproducible as `tests/live/test_s10_claude_code.py` (10 tests, 2 minutes, `-m live`). New production code from the findings: `src/iamagents/launch.py` (render runtime, scrubbed environment).
+
+**The three questions of S10: all confirmed.**
+* Inline HTTP MCP with an `Authorization` header and `${VAR}` expansion works in agent frontmatter, for the main agent and for subagents. The audit shows `agent=ds` for the subagent's call.
+* `agent_type` is in the hook input in headless mode: `ds` for `--agent ds`, `team-lead` for the team lead's main thread, the subagent's type plus an `agent_id` inside a subagent. No `IAM_AGENT` fallback needed. The dispatch tool is `Agent` in hook input.
+* `--agent` applies `tools`, `mcpServers` and `skills`. `ds` sees exactly `Skill` plus its gateway tools. The team lead sees `Agent`/`Task` and `Skill` and **no** `mcp__gw-ds__`, `mcp__gw-am__`, `mcp__gw-ig__` or `mcp__gw-pam__` tool.
+
+**Hooks, live.** `domain_guard` denied a ds call to `mcp__gw-am__get_user` and the call never reached the gateway. `hop_limit` allowed ds, am, ig and denied the 4th dispatch. `result_schema` delivered one "Stop hook feedback" and then wrote `schema_violation` to the trace (twice, with a model that kept refusing JSON). `PostToolUse` `tool_response` is a list of `{type: text, text: <json>}`, which `trace` parses. Settings `deny` beats an agent's `tools`: Bash listed in an agent file stays unavailable, also in subagents.
+
+**Findings that change the design.**
+1. **Token exposure through environment variable expansion in tool input** (reported to the vendor; details withheld until fixed). A model could get a token from the Claude process environment into its own context, the transcript and the gateway audit log, even through a tool that was disabled. Consequence: no token (and no other secret, such as an API key) may be in the Claude process environment. The harness renders literal tokens into a copy of the agent files under the gitignored `state/runtime/` and starts `claude` with an allowlisted environment. Re-run of the exposure test against that setup: the tokens did not reach the model, the transcripts or the audit log.
+2. **Token sweep** (every `GW_*` value searched in stream output, hook capture, trace, audit log, gateway log, hook state, all transcripts and subagent transcripts under `~/.claude/projects`, the rest of `~/.claude`, and the `--debug-file` log):
+
+   | Setup | Result |
+   |---|---|
+   | Env tokens, runs 1, 2, 3 and the `--debug` run (normal use) | clean everywhere, including the debug log |
+   | Env tokens, run 6 (the exposure test) | **leak**: run stream, the probe session transcript, and this dev session's transcript (I displayed the output). All tokens were rotated afterwards |
+   | Rendered runtime and scrubbed env, runs with the exploit prompts and `--debug` | clean everywhere except the rendered agent files themselves, which is expected; they are deleted after the run |
+
+   The live test repeats the sweep over the audit log, the run outputs and the Claude project transcripts. The spike's own Claude transcripts remain in `~/.claude/projects/C--Projects-scoped-iam-agents-state-s10-*`; the one from run 6 holds a rotated, dead token.
+3. **Trust.** In a directory that is not a trusted workspace Claude Code silently skips the inline MCP servers of agent files (init shows only the account's connector, the agent has no gateway tool). The runtime is rendered inside the repo (trust is inherited) and the repo must have been trusted once by opening `claude` in it.
+4. **Dev context leak.** Agents run from inside the repo load the development `CLAUDE.md` (the team lead quoted its hard rules back) and get the dev project's auto memory path. `claudeMdExcludes: ["**/CLAUDE.md"]` and `autoMemoryEnabled: false` in the runtime settings fix both (verified: NONE, no memory path).
+5. **Unrestricted dispatch.** With a plain `Agent` tool the team lead can dispatch built-in types. A `general-purpose` subagent had no Bash or Read (settings deny applies in subagents) but could load the 8 claude.ai Docs connector tools through `ToolSearch` (`create`, `read`, `query`, `export`, ...), an exfiltration path. `Agent(ds, am, ig, pam)` in the team lead file closes it ("Agent type 'general-purpose' not found. Available agents: am, ds, ig, pam"); a config test pins it.
+6. **Skills and connectors are session wide.** The `Skill` tool can invoke any skill of the session (a probe launched a user level skill). `--setting-sources project` reduces 37 to 24 visible skills, bundled ones remain. `--strict-mcp-config` removes the account's connector but also the agents' own inline gateway servers (subagents get no gateway tools), so it cannot be used. Connector tools stay unreachable because no agent has `ToolSearch` and dispatch is restricted. Open: whether a skill's `allowed-tools` could widen an agent's tools; not tested.
+
+**Latency** (10 runs each through Git Bash, which is what runs hooks): `uv run --project .. python -m iamagents.hooks.domain_guard` 308 ms median, the venv interpreter directly 276 ms, `trace` 84 ms, bare interpreter 56 ms. `uv run` adds only about 30 ms; the cost is importing pydantic and YAML in `domain_guard`. No change needed; a hook that reads the YAML without pydantic would save about 200 ms per gateway call if it ever matters. Hooks run under Git Bash, so `uv` must be on the PATH of the `claude` process (or the hook commands use an absolute interpreter, as the rendered copy does).
+
+**Other.** `claude -p` waits 3 s for stdin unless it is closed: use `stdin=DEVNULL`. Cost: the runs whose cost I checked were 0.02 to 0.04 USD each; I did not total them. The `capture` hook used to record raw payloads is deleted, and so are the capture files, rendered runtimes and the dev gateway's state; findings above are all that was needed.
+
+**Decisions.**
+* Tokens are literals in a rendered, short lived copy of the agent files, never in the environment. Next step for 0.10: per-run tokens issued and revoked through the admin endpoint, so a leaked token dies with the run.
+* The runtime lives under `state/runtime/` and the repo's `CLAUDE.md` and auto memory are switched off in its settings. `CLAUDE.md` of the repo updated: the harness no longer runs from `runtime/` directly.
+
+**Numbers.** 312 unit tests pass (12 new: launcher and config pins), 10 live S10 tests pass, ruff clean.
+
+**Next.** 0.10 eval harness with a stub agent. It must use `iamagents.launch`, assert one ticket per `claude -p` session (the hop counter assumption), start `claude` with `stdin=DEVNULL`, issue per-run tokens, and record the audit head hash and the per-tool `blocked_egress` counts in every report.

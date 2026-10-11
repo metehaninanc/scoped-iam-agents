@@ -33,6 +33,11 @@ AGENT_FILES = {
 }
 
 
+# Spike S10: an unrestricted `Agent` tool can dispatch built-in types such as general-purpose,
+# which can load connector tools through ToolSearch. Dispatch is limited to our four agents.
+DISPATCH = "Agent(ds, am, ig, pam)"
+
+
 def settings():
     return json.loads((RUNTIME / "settings.json").read_text(encoding="utf-8"))
 
@@ -89,12 +94,23 @@ def test_each_agent_has_only_its_own_gateway_server_token_and_tools(name):
         POLICY.tools_for(identity)
     )
     extras = set(fm["tools"]) - set(gateway_tools)
-    assert extras == ({"Agent", "Skill"} if may_dispatch else {"Skill"})
+    assert extras == ({DISPATCH, "Skill"} if may_dispatch else {"Skill"})
 
 
 def test_only_the_team_lead_can_dispatch_agents():
     for name, (_, may_dispatch) in AGENT_FILES.items():
-        assert ("Agent" in frontmatter(name)["tools"]) is may_dispatch
+        assert any(t.startswith("Agent") for t in frontmatter(name)["tools"]) is may_dispatch
+
+
+def test_dispatch_is_limited_to_the_four_domain_agents():
+    tools = frontmatter("team-lead")["tools"]
+    assert DISPATCH in tools and "Agent" not in tools
+    assert re.fullmatch(r"Agent\((.*)\)", DISPATCH).group(1).split(", ") == [
+        "ds",
+        "am",
+        "ig",
+        "pam",
+    ]
 
 
 def test_subagent_nesting_is_limited():
@@ -126,3 +142,11 @@ def test_hooks_cover_the_expected_events():
 
 def test_policy_identities_cover_every_agent_file():
     assert {i for i, _ in AGENT_FILES.values()} == set(POLICY.identities)
+
+
+def test_dev_claude_md_and_memory_are_kept_out_of_the_agents_context():
+    """S10: the runtime lives inside the repo (trust is inherited), so it would otherwise load
+    the development CLAUDE.md and the dev project's auto memory into every agent."""
+    s = settings()
+    assert "**/CLAUDE.md" in s["claudeMdExcludes"]
+    assert s["autoMemoryEnabled"] is False

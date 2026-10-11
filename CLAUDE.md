@@ -18,7 +18,7 @@ Read before working: `docs/SPRINTS.md` (what to build now), `docs/PERMISSIONS.md
 ## Two `.claude` folders
 
 * Repository root `.claude/`: your normal development setup.
-* `runtime/.claude/`: the agent system under test. Edit it like source code. The eval harness runs `claude -p` with `runtime/` as the working directory, so its restrictive settings never affect development.
+* `runtime/.claude/`: the agent system under test. Edit it like source code. The eval harness renders `runtime/.claude` into the gitignored `state/runtime/` (tokens filled in, `iamagents.launch`) and runs `claude -p` there with a scrubbed environment, so its restrictive settings never affect development and no token sits in the environment.
 
 ## Hard rules
 

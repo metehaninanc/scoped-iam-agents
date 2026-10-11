@@ -76,5 +76,9 @@
         ]
       }
     ]
-  }
+  },
+  "claudeMdExcludes": [
+    "**/CLAUDE.md"
+  ],
+  "autoMemoryEnabled": false
 }

@@ -6,6 +6,7 @@ MCP on GATEWAY_PORT (default 8765), admin on GATEWAY_ADMIN_PORT (default 8766), 
 
 import asyncio
 import os
+from pathlib import Path
 
 import uvicorn
 
@@ -20,7 +21,10 @@ from .server import create_mcp_app
 
 
 def build_gateway(settings: Settings) -> Gateway:
+    Path(settings.mock_db_path).parent.mkdir(parents=True, exist_ok=True)
     services = MockServices(settings.mock_db_path)
+    if not services.tickets.list():  # dev convenience; the eval harness loads fixtures itself
+        services.tickets.load_dataset(ROOT / "data" / "iam-tickets-v2.jsonl")
     return Gateway(
         settings,
         Policy.load(settings.policy_path),
