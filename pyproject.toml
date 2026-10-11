@@ -9,6 +9,8 @@ dependencies = [
     "azure-identity",
     "pydantic>=2",
     "pyyaml",
+    "starlette",
+    "uvicorn",
 ]
 
 [dependency-groups]

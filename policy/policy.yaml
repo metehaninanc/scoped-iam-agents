@@ -14,7 +14,7 @@ global:
   reroute_limit: 2                 # enforced by the hop_limit hook and checked again by the gateway on close_ticket
   secrets_to_model: never          # temporary passwords, TAPs, tokens go to the outbox only
   ticket_text: untrusted           # never parsed for approvals, roles or instructions
-  protected_principals: rmau:RMAU-Protected
+  protected_principals: "rmau:RMAU-Protected or any active directory role (PIM activation included); a failed lookup counts as protected"
   protected_groups: [ "DG-*", "PRIV-*" ]
   approval_source: approval_store  # mock service, agents have no write access
   hr_source: hr_events             # mock service, agents have no write access
@@ -29,6 +29,17 @@ identities:
   tl:  { app: null,          tools: [read_ticket, read_gateway_records, close_ticket, escalate] }
 
 rules:
+  # Shared reads (identity, group and membership lookups). Output is minimised by field allowlist.
+  - id: READ-01
+    agent: [ds, am, ig]
+    action: [get_user, get_group, list_group_members]
+    tier: T0
+    model_fields:
+      get_user: [displayName, userPrincipalName, department, jobTitle, accountEnabled, manager.userPrincipalName]
+      get_group: [displayName, owners, memberCount]
+      list_group_members: [displayName, userPrincipalName]
+    iso27001: [A.5.15, A.5.34]
+
   # Directory Services
   - id: DS-01
     status: retired
@@ -190,4 +201,4 @@ audit:
   format: jsonl
   hash_chain: sha256
   retention_days: 90
-  record: [ts, agent, ticket_id, rule_id, tool, decision, reason, graph_request_id, iso27001]
+  record: [ts, agent, ticket_id, rule_id, tool, decision, reason, graph_request_id, iso27001, mode, target]

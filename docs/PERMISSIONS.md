@@ -57,6 +57,8 @@ Privileged users are members of both. An RMAU blocks roles scoped to regular adm
 
 Before adding the admin account to the RMAU, create a second emergency access account outside it.
 
+**Protected principal (gateway definition).** A user is protected if they are a member of `RMAU-Protected` or hold any active directory role. The second clause covers a user elevated through PIM: not in the RMAU, but an administrator for that window. The gateway reads both from Graph with the calling agent's own Directory Readers access, caches the answer briefly, and treats a failed lookup as protected. Where the RMAU membership is read from in the real tenant (Graph or `seed/tenant.yaml`) is decided in task 0.5.
+
 ## 4. Per agent permissions
 
 ### Directory Services (DS)

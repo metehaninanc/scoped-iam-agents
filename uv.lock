@@ -409,6 +409,8 @@ dependencies = [
     { name = "msgraph-sdk" },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "starlette" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -424,6 +426,8 @@ requires-dist = [
     { name = "msgraph-sdk" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pyyaml" },
+    { name = "starlette" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata.requires-dev]

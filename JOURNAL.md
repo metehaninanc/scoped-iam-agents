@@ -87,3 +87,23 @@
 **Numbers.** 26 unit tests pass (21 new), ruff clean. All 89 tickets apply in both modes.
 
 **Next.** 0.9 gateway skeleton.
+
+## 2026-10-11: Sprint 0, task 0.9 gateway skeleton
+
+**Done.** `src/iamagents/gateway/`: MCP server (streamable HTTP, `mcp` 2.3 low-level server), bearer token auth, per-token tool lists from `policy.yaml`, policy engine with named predicates, Graph client interface plus `FakeGraph` (seed org from `seed/seed-org.md` and `data/validate.py`), field minimiser, protection checker with cache, hash-chained audit log, admin endpoint. Four tools: `get_user`, `get_group`, `list_group_members`, `reset_password`. Other policy tools stay off the list until their sprint.
+
+**Decisions.**
+* **Active ticket binding.** `ticket_id` comes from the agent, so an injected ticket could pass another ticket's id and borrow its requester and approvals. The harness sets the active ticket through `Gateway.bind_ticket` or a separate admin endpoint (own port, own token, not MCP). Any call whose `ticket_id` differs is denied and audited as `ticket_mismatch`. No bound ticket means `no_active_ticket`. Requester comes from the stored ticket record, never from ticket text.
+* **Protected principal = RMAU-Protected member OR any active directory role.** A PIM-elevated user is an admin for that window without being in the RMAU. The lookup uses the calling agent's own Graph identity (Directory Readers), a 30 s cache, and a failed lookup (not cached) counts as protected and routes to PAM. Source of RMAU membership in the real tenant is left to 0.5. Recorded in `PERMISSIONS.md` section 3.
+* **Plan and live results are identical.** Only the audit differs (`allow_plan` versus `allowed`). Plan mode records an intended call and sends nothing; live mode generates the password, calls Graph as `ds` and sends the password to the outbox.
+* **Secrets.** Passwords travel as a `Secret` object whose repr and str are redacted and which cannot be pickled, so even a Graph client that logs its request body at debug level does not print it. The test turns on debug logging for the gateway and the Graph client, runs a reset and checks the password is not in captured logs, the audit file, the tool result or any mock store except the outbox. A mutation check (logging the revealed value) makes that test fail.
+* **FakeGraph L1 and L2 are emulated.** Marked as such in code and test names. They show that a call which gets past a buggy gateway is still refused in the model, but prove nothing about Entra. Task 0.7 is the proof.
+* **Policy additions.** New rule `READ-01` (shared reads with field allowlists) and `mode`, `target` added to the audit record fields. `.env.example` tokens renamed to `GW_TOKEN_*` to match the agent files, plus `GW_ADMIN_TOKEN`.
+* An unknown `require:` condition fails closed. The audit log stores identifiers only; a test checks that injected text in tool arguments does not reach it.
+* Audit chain detects edits, deletions and reordering. Truncating the tail is not detectable from the file alone; the Sprint 6 hash anchoring covers it.
+
+**Numbers.** 83 unit tests pass (57 new), ruff clean. Mutation checks: ticket binding disabled fails 2 tests, password logged fails 1.
+
+**Open.** Real `msgraph-sdk` client and its debug logging behaviour (S1 should check that the password stays out of kiota logs). The gateway process and harness will share the mock SQLite file (`MOCK_DB_PATH`); to be wired in 0.10 and 0.12.
+
+**Next.** 0.11 data protection basics.
