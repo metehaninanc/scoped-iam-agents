@@ -16,6 +16,12 @@ tokens in the environment:
 4. A directory inside the repo inherits the development `CLAUDE.md` and the dev project's auto
    memory. `runtime/.claude/settings.json` turns both off (`claudeMdExcludes`,
    `autoMemoryEnabled`), and a live test checks that the agents see neither.
+5. The built-in tool set is an allowlist, not a blocklist. A deny list leaves every tool that is
+   not on it (a dozen survived in the probe, among them `ToolSearch`, `SendMessage`,
+   `RemoteTrigger`, `CronCreate`), and new Claude Code versions add more. `claude_command` passes
+   `--tools` with the exact built-in set of each agent; the deny list in `settings.json` and each
+   agent's own `tools` list are further layers. A live test compares every agent's init tool list
+   with the expected set, so one extra tool fails it.
 
 The committed agent files keep `${GW_TOKEN_*}` placeholders; they are templates.
 """
@@ -26,12 +32,15 @@ import re
 import shutil
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from .gateway.config import ROOT
 
-# Variables Windows and the Claude CLI need. Nothing else is passed on.
+# The variables Windows and the Claude CLI need, and nothing else. Whatever is in the environment
+# can end up in the model's context (see the module docstring), so this is the minimum that
+# still runs a full agent call with hooks (verified one variable at a time in S10 follow-up): no
+# user name, computer name, domain or logon server, no program or data directories.
 ENV_ALLOW = frozenset(
     {
         "PATH",
@@ -41,33 +50,40 @@ ENV_ALLOW = frozenset(
         "WINDIR",
         "COMSPEC",
         "USERPROFILE",
-        "HOMEDRIVE",
-        "HOMEPATH",
         "APPDATA",
         "LOCALAPPDATA",
         "TEMP",
         "TMP",
-        "PROGRAMFILES",
-        "PROGRAMFILES(X86)",
-        "PROGRAMW6432",
-        "PROGRAMDATA",
-        "COMMONPROGRAMFILES",
-        "ALLUSERSPROFILE",
-        "PUBLIC",
-        "USERNAME",
-        "USERDOMAIN",
-        "COMPUTERNAME",
-        "OS",
-        "PROCESSOR_ARCHITECTURE",
-        "NUMBER_OF_PROCESSORS",
-        "SESSIONNAME",
-        "LOGONSERVER",
     }
 )
 
 RUNTIME_ROOT = ROOT / "state" / "runtime"  # gitignored; trust is inherited from the repo
 _PLACEHOLDER = re.compile(r"\$\{(GW_TOKEN_[A-Z]+)\}")
 _HOOK_PREFIX = "uv run --project .. python"
+
+
+# The exact built-in tools of each agent, passed as `--tools`. MCP tools come from the agent files.
+# The domain agents get the Skill tool only; the team lead also dispatches (limited to the four
+# domain agents by `Agent(ds, am, ig, pam)` in its file).
+BUILTIN_TOOLS = {
+    "ds": "Skill",
+    "am": "Skill",
+    "ig": "Skill",
+    "pam": "Skill",
+    "team-lead": "Skill,Agent",
+}
+# The init message of a session lists the dispatch tool under this name.
+INIT_NAME = {"Agent": "Task"}
+
+# Dedicated Claude Code config directory for runtime runs: no user skills, settings or account
+# connectors from the developer's own configuration. One interactive login and trust acceptance
+# in it is needed (see `config_dir_ready`).
+CONFIG_DIR = ROOT / "state" / "claude-config"
+
+
+def config_dir_ready(path: Path = CONFIG_DIR) -> bool:
+    """True once someone has logged in with CLAUDE_CONFIG_DIR pointing at `path`."""
+    return (path / ".credentials.json").exists()
 
 
 def scrubbed_env(
@@ -139,3 +155,40 @@ def _render_into(dest: Path, tokens: Mapping[str, str], source: Path, python: st
 def cleanup(runtime_dir: Path) -> None:
     """Remove a rendered runtime (it holds literal tokens)."""
     shutil.rmtree(runtime_dir, ignore_errors=True)
+
+
+def claude_command(
+    agent: str,
+    prompt: str,
+    *,
+    model: str = "haiku",
+    max_turns: int = 10,
+    claude: str | None = None,
+    extra: Sequence[str] = (),
+) -> list[str]:
+    """Argument list for one `claude -p` run of `agent`.
+
+    `--tools` takes a variable number of values, so it is placed before another option and
+    never directly before the prompt. Run it with stdin closed (`stdin=DEVNULL`): `claude -p`
+    otherwise waits 3 seconds for input.
+    """
+    exe = claude or shutil.which("claude")
+    if exe is None:
+        raise FileNotFoundError("the claude CLI is not on PATH")
+    return [
+        exe,
+        "-p",
+        "--tools",
+        BUILTIN_TOOLS[agent],
+        "--agent",
+        agent,
+        "--model",
+        model,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--max-turns",
+        str(max_turns),
+        *extra,
+        prompt,
+    ]

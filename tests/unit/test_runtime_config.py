@@ -21,7 +21,14 @@ AGENTS_DIR = RUNTIME / "agents"
 POLICY = Policy.load(ROOT / "policy" / "policy.yaml")
 
 MUST_DENY = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch"]
-FORBIDDEN_FOR_AGENTS = MUST_DENY + ["NotebookEdit", "PowerShell", "Monitor", "*"]
+# The deny list is the second layer behind `--tools` (an allowlist, see launch.BUILTIN_TOOLS). It
+# also names the built-ins that survived a deny list in the S10 probe, ToolSearch among them.
+ALSO_DENIED = [
+    "PowerShell", "NotebookEdit", "ToolSearch", "Monitor", "SendMessage", "TaskStop", "TaskOutput",
+    "CronCreate", "CronList", "CronDelete", "EnterWorktree", "ExitWorktree", "RemoteTrigger",
+    "ListAgents", "ReportFindings", "PushNotification", "TodoWrite",
+]  # fmt: skip
+FORBIDDEN_FOR_AGENTS = MUST_DENY + ALSO_DENIED + ["*"]
 
 # file name -> (gateway identity, may use the dispatch tool)
 AGENT_FILES = {
@@ -51,6 +58,11 @@ def frontmatter(name):
 
 @pytest.mark.parametrize("tool", MUST_DENY)
 def test_settings_deny_the_tools_that_would_break_token_isolation(tool):
+    assert tool in settings()["permissions"]["deny"]
+
+
+@pytest.mark.parametrize("tool", ALSO_DENIED)
+def test_settings_also_deny_the_other_builtins_seen_in_the_probe(tool):
     assert tool in settings()["permissions"]["deny"]
 
 
@@ -150,3 +162,16 @@ def test_dev_claude_md_and_memory_are_kept_out_of_the_agents_context():
     s = settings()
     assert "**/CLAUDE.md" in s["claudeMdExcludes"]
     assert s["autoMemoryEnabled"] is False
+
+
+@pytest.mark.parametrize("name", AGENT_FILES)
+def test_launcher_builtin_set_is_exactly_what_the_agent_file_lists(name):
+    """--tools is the allowlist; the agent file and the launcher must name the same built-ins."""
+    from iamagents import launch
+
+    builtins = {
+        re.sub(r"\(.*\)$", "", t) for t in frontmatter(name)["tools"] if not t.startswith("mcp__")
+    }
+    assert set(launch.BUILTIN_TOOLS[name].split(",")) == builtins
+    assert set(launch.BUILTIN_TOOLS) == set(AGENT_FILES)
+    assert builtins <= {"Skill", "Agent"}

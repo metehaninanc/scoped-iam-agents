@@ -18,7 +18,23 @@
       "Grep",
       "NotebookEdit",
       "WebFetch",
-      "WebSearch"
+      "WebSearch",
+      "PowerShell",
+      "ToolSearch",
+      "Monitor",
+      "SendMessage",
+      "TaskStop",
+      "TaskOutput",
+      "CronCreate",
+      "CronList",
+      "CronDelete",
+      "EnterWorktree",
+      "ExitWorktree",
+      "RemoteTrigger",
+      "ListAgents",
+      "ReportFindings",
+      "PushNotification",
+      "TodoWrite"
     ]
   },
   "env": {

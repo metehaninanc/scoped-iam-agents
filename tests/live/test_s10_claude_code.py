@@ -105,8 +105,7 @@ def run_claude(runtime, agent, prompt, tmp_path, *, extra=None, env_extra=None, 
             **(env_extra or {}),
         }
     )
-    cmd = [CLAUDE, "-p", "--agent", agent, "--model", "haiku", "--output-format", "stream-json"]
-    cmd += ["--verbose", "--max-turns", str(max_turns), *(extra or []), prompt]
+    cmd = launch.claude_command(agent, prompt, max_turns=max_turns, extra=extra or [])
     proc = subprocess.run(
         cmd, cwd=runtime, env=env, stdin=subprocess.DEVNULL, capture_output=True,
         text=True, encoding="utf-8", timeout=420,
@@ -272,11 +271,57 @@ def test_result_schema_hook_gives_one_retry_then_records_a_violation(bound, runt
     assert not violations or "hello" not in json.dumps(violations)  # the message text is not logged
 
 
+GATEWAY_SERVERS = {
+    "ds": "gw-ds",
+    "am": "gw-am",
+    "ig": "gw-ig",
+    "pam": "gw-pam",
+    "team-lead": "gw-tl",
+}
+IDENTITY = {"ds": "ds", "am": "am", "ig": "ig", "pam": "pam", "team-lead": "tl"}
+
+
+@pytest.mark.parametrize("agent", list(GATEWAY_SERVERS))
+def test_each_agent_has_exactly_the_expected_tools(bound, runtime, tmp_path, agent):
+    """Allowlist check. The init tool list must equal Skill, the dispatch tool for the team lead,
+    and the gateway tools of the agent's policy list that the gateway serves. One extra tool fails."""
+    identity = IDENTITY[agent]
+    served = {t.name for t in bound.tools_for(identity)}
+    assert served <= set(bound.policy.tools_for(identity))  # nothing outside policy.yaml
+    expected = {"Skill"} | {f"mcp__{GATEWAY_SERVERS[agent]}__{n}" for n in served}
+    if agent == "team-lead":
+        expected |= {launch.INIT_NAME["Agent"]}
+    r = run_claude(runtime, agent, "Reply with the single word ok.", tmp_path, max_turns=2)
+    assert set(r["init"]["tools"]) == expected, sorted(set(r["init"]["tools"]) ^ expected)
+    assert len(r["init"]["tools"]) == len(expected)  # no duplicates either
+    servers = {m["name"] for m in r["init"]["mcp_servers"]}
+    assert GATEWAY_SERVERS[agent] in servers or not served  # its own server, when it serves tools
+
+
+@pytest.mark.skipif(not launch.config_dir_ready(), reason="no login in state/claude-config yet")
+def test_dedicated_config_dir_hides_user_skills_settings_and_connectors(bound, runtime, tmp_path):
+    r = run_claude(
+        runtime, "ds", "Reply with the single word ok.", tmp_path, max_turns=2,
+        env_extra={"CLAUDE_CONFIG_DIR": str(launch.CONFIG_DIR)},
+    )  # fmt: skip
+    assert not [s for s in r["init"]["skills"] if s.startswith("anthropic-skills:")]
+    assert {m["name"] for m in r["init"]["mcp_servers"]} <= {"gw-ds"}, r["init"]["mcp_servers"]
+    assert r["init"]["plugins"] == []
+
+
 def test_dispatch_is_limited_to_the_four_agents(bound, runtime, tmp_path):
-    prompt = "Use the Agent tool with subagent_type general-purpose and prompt 'say hi'. Quote any refusal exactly."
-    r = run_claude(runtime, "team-lead", prompt, tmp_path, max_turns=6)
+    prompt = (
+        "Dispatch these agents one after another with the Agent tool: first subagent_type general-purpose with "
+        f"prompt 'say hi', then subagent_type ds with the prompt 'Probe. Do not use any tool. Reply with exactly: {RESULT_JSON}'. "
+        "Report what happened for each dispatch, quoting any refusal exactly."
+    )
+    r = run_claude(runtime, "team-lead", prompt, tmp_path, max_turns=8)
+    dispatched = [i["subagent_type"] for name, i, _ in tool_uses(r["events"]) if name == "Agent"]
+    if "general-purpose" not in dispatched:
+        pytest.skip("the model did not attempt the dispatch, so the restriction was not exercised")
     errors = [str(x["content"]) for x in tool_results(r["events"]) if x.get("is_error")]
     assert any("not found. Available agents: am, ds, ig, pam" in e for e in errors)
+    assert "ds" in dispatched  # the allowed agents still work
 
 
 def test_the_dev_claude_md_is_not_loaded_into_the_agents(bound, runtime, tmp_path):

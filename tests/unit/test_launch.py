@@ -123,3 +123,53 @@ def test_scrubbed_env_of_the_real_environment_holds_no_gateway_token(monkeypatch
     monkeypatch.setenv("GW_ADMIN_TOKEN", "y")
     env = launch.scrubbed_env()
     assert not [k for k in env if k.upper().startswith(("GW_", "ANTHROPIC", "TENANT", "AZURE"))]
+
+
+def test_claude_command_shape():
+    cmd = launch.claude_command("ds", "the prompt", claude="claude", model="haiku", max_turns=4)
+    assert cmd[:2] == ["claude", "-p"]
+    assert cmd[-1] == "the prompt"
+    i = cmd.index("--tools")
+    assert cmd[i + 1] == "Skill" and cmd[i + 2].startswith("--")  # never directly before the prompt
+    assert cmd[cmd.index("--agent") + 1] == "ds"
+    assert cmd[cmd.index("--max-turns") + 1] == "4"
+    assert "--output-format" in cmd and cmd[cmd.index("--output-format") + 1] == "stream-json"
+
+
+def test_team_lead_gets_the_dispatch_tool_and_nothing_else():
+    cmd = launch.claude_command("team-lead", "p", claude="claude")
+    assert cmd[cmd.index("--tools") + 1] == "Skill,Agent"
+    for agent in ("ds", "am", "ig", "pam"):
+        assert launch.claude_command(agent, "p", claude="claude")[3] == "Skill"
+
+
+def test_claude_command_extra_options_come_before_the_prompt():
+    cmd = launch.claude_command("ds", "p", claude="claude", extra=["--debug-file", "x.log"])
+    assert cmd[-3:] == ["--debug-file", "x.log", "p"]
+
+
+def test_unknown_agent_has_no_tool_set():
+    with pytest.raises(KeyError):
+        launch.claude_command("general-purpose", "p", claude="claude")
+
+
+def test_config_dir_is_inside_the_gitignored_state_dir():
+    assert launch.CONFIG_DIR.resolve().is_relative_to((ROOT / "state").resolve())
+    assert launch.config_dir_ready(Path(tempfile.gettempdir()) / "no-such-claude-config") is False
+
+
+def test_env_allowlist_is_minimal_and_holds_no_identifying_or_secret_variable():
+    assert len(launch.ENV_ALLOW) <= 11
+    for name in launch.ENV_ALLOW:
+        assert not re.search(
+            r"(KEY|SECRET|TOKEN|PASSWORD|CRED|AUTH|AZURE|AWS|ANTHROPIC|TENANT|CLIENT)", name
+        )
+    # personal identifiers the model has no use for
+    for name in ("USERNAME", "COMPUTERNAME", "USERDOMAIN", "LOGONSERVER", "SESSIONNAME", "PUBLIC"):
+        assert name not in launch.ENV_ALLOW
+
+
+def test_scrubbed_env_of_the_real_environment_has_no_token_shaped_value():
+    shape = re.compile(r"^[A-Za-z0-9_\-+/=]{24,}$")  # a bare long random-looking string
+    for name, value in launch.scrubbed_env().items():
+        assert not shape.match(value), name
