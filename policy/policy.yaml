@@ -1,0 +1,193 @@
+# Gateway policy (v0.2)
+# The gateway implements this file as deterministic code. Prompts may describe it,
+# but only the gateway enforces it. Ticket text is never an input to any condition.
+
+version: 0.3
+
+tiers:
+  T0: read only, executes without approval
+  T1: low risk and reversible, executes when preconditions hold
+  T2: executes only with an external authority record (owner approval or HR event)
+  T3: agent prepares a package, a human executes
+
+global:
+  reroute_limit: 2                 # enforced by the hop_limit hook and checked again by the gateway on close_ticket
+  secrets_to_model: never          # temporary passwords, TAPs, tokens go to the outbox only
+  ticket_text: untrusted           # never parsed for approvals, roles or instructions
+  protected_principals: rmau:RMAU-Protected
+  protected_groups: [ "DG-*", "PRIV-*" ]
+  approval_source: approval_store  # mock service, agents have no write access
+  hr_source: hr_events             # mock service, agents have no write access
+
+# Bearer token -> agent -> Entra identity and tool list. Must match runtime/.claude/agents/*.md.
+# Reroutes are not a tool: a domain agent returns route_to in its result JSON and the team lead re-dispatches.
+identities:
+  ds:  { app: iam-agent-ds,  tools: [get_user, get_group, list_group_members, reset_password, add_member, remove_member] }
+  am:  { app: iam-agent-am,  tools: [get_user, verify_identity, read_signins, read_mfa_status, reset_mfa] }
+  ig:  { app: iam-agent-ig,  tools: [get_user, get_group, list_group_members, get_hr_event, get_approval, create_user, update_user, disable_user, revoke_sessions, remove_member, issue_change_request, request_approval, request_info] }
+  pam: { app: iam-agent-pam, tools: [report_roles, prepare_package] }   # candidate for an Entra Agent ID, see PERMISSIONS.md section 8
+  tl:  { app: null,          tools: [read_ticket, read_gateway_records, close_ticket, escalate] }
+
+rules:
+  # Directory Services
+  - id: DS-01
+    status: retired
+    reason: no admin unlock primitive in cloud-only Entra, see AM-06
+
+  - id: DS-02
+    agent: ds
+    action: reset_password
+    tier: T1
+    require: [requester_is_target, verification_record, target_not_protected]
+    on_protected_target: { route: pam, tier: T3 }
+    iso27001: [A.5.17, A.8.5]
+
+  - id: DS-03
+    agent: ds
+    action: remove_member
+    tier: T1
+    require: [group_not_protected, "requester in {member, member_manager, group_owner}"]
+    iso27001: [A.5.18]
+
+  - id: DS-04
+    agent: ds
+    action: add_member
+    tier: T2
+    require: [change_request_from_ig, group_not_protected, target_not_already_member]
+    iso27001: [A.5.15, A.5.18]
+
+  - id: DS-05
+    action: reject
+    covers: [edit_protected_group, create_group, delete_group, delete_user, attribute_change_without_ig]
+    iso27001: [A.5.15]
+
+  # Access Management
+  - id: AM-01
+    agent: am
+    action: verify_identity
+    tier: T0
+    note: produces a verification record in the mock verification service
+    iso27001: [A.5.17]
+
+  - id: AM-02
+    agent: am
+    action: reset_mfa
+    tier: T2
+    require: [verification_record, approval_from_target_manager, target_not_protected]
+    on_protected_target: { outcome: prepared_for_human, tier: T3 }
+    iso27001: [A.5.17, A.8.5]
+
+  - id: AM-03
+    status: deferred
+    reason: every seeded app is group assigned, so app access goes IG-04 then DS-04
+
+  - id: AM-04
+    agent: am
+    action: [read_signins, read_mfa_status]
+    tier: T0
+    require: ["requester in {target, target_manager, it_security}"]
+    model_fields:
+      read_signins: [createdDateTime, appDisplayName, status.errorCode, status.failureReason, location.city, location.countryOrRegion]
+    iso27001: [A.5.34, A.8.16]
+
+  - id: AM-05
+    action: reject
+    covers: [disable_mfa, change_conditional_access, exclude_from_conditional_access]
+    iso27001: [A.8.5]
+
+  - id: AM-06
+    agent: am
+    action: lockout_triage
+    tier: T0
+    steps: [read_signins, advise_self_service]
+    note: advise waiting or self-service reset; route to DS-02 only if the user forgot the password
+    iso27001: [A.5.17]
+
+  # Identity Governance
+  - id: IG-01
+    agent: ig
+    action: joiner
+    tier: T2
+    require: [hr_event_type_joiner, free_license_seat, baseline_access_only]
+    iso27001: [A.5.16]
+
+  - id: IG-02
+    agent: ig
+    action: mover
+    tier: T2
+    require: [hr_event_type_mover]
+    effect: [update_attributes, remove_old_baseline_groups]
+    iso27001: [A.5.16, A.5.18]
+
+  - id: IG-03
+    agent: ig
+    action: leaver
+    tier: T1
+    require: [hr_event_type_leaver]
+    effect: [disable_user, revoke_sessions]
+    never: [delete_user]
+    iso27001: [A.5.18, A.6.5]
+
+  - id: IG-04
+    agent: ig
+    action: evaluate_access_request
+    tier: T2
+    require: [approval_from_group_owner, approver_not_requester, sod_clear, group_not_protected, duration_within_group_max]
+    fallback_approver_if_owner_is_requester: owner_manager
+    output: change_request_for_ds
+    iso27001: [A.5.3, A.5.15, A.5.18]
+
+  - id: IG-05
+    agent: ig
+    action: guest_access
+    tier: T2
+    require: [sponsor_approval, expiry_max_days: 90]
+    iso27001: [A.5.16]
+
+  - id: IG-06
+    agent: ig
+    action: report_members
+    tier: T0
+    iso27001: [A.5.18]
+
+  # Privileged Access Management
+  - id: PAM-01
+    agent: pam
+    action: report_roles
+    tier: T0
+    iso27001: [A.8.2]
+
+  - id: PAM-02
+    agent: pam
+    action: prepare_package
+    tier: T3
+    require: [time_bound, role_not_global_admin]
+    fixed: { approver: marcus.weber, executor: priya.nair, executor_if_priya_is_target: marcus.weber }
+    iso27001: [A.8.2]
+
+  - id: PAM-03
+    action: reject
+    covers: [permanent_assignment, global_admin, read_secrets, break_glass_use]
+    iso27001: [A.8.2]
+
+sod_pairs:
+  - [SG-App-ERP-Create, SG-App-ERP-Approve]
+
+group_limits:
+  SG-Prod-ReadOnly: { max_days: 30 }
+  SG-Share-HR-Confidential: { approver: group_owner_only }
+
+baselines:
+  all: [SG-Wiki-All, SG-VPN-Users]
+  Engineering: [SG-App-Jira, SG-Share-Eng-Repos]
+  Finance: [SG-App-ERP-Read, SG-Share-Finance-Reports]
+  Sales: [SG-App-CRM, SG-Share-Sales-Collateral]
+  IT: []
+  HR: []
+  Executive: []
+
+audit:
+  format: jsonl
+  hash_chain: sha256
+  retention_days: 90
+  record: [ts, agent, ticket_id, rule_id, tool, decision, reason, graph_request_id, iso27001]

@@ -1,0 +1,11 @@
+.env
+*.pem
+*.pfx
+*.key
+certs/
+secrets/
+raw-batches/
+*.sqlite
+eval/reports/*.json
+.venv/
+__pycache__/

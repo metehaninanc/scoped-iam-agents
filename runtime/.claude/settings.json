@@ -1,0 +1,58 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__gw-tl__*",
+      "mcp__gw-ds__*",
+      "mcp__gw-am__*",
+      "mcp__gw-ig__*",
+      "mcp__gw-pam__*",
+      "Agent",
+      "Skill"
+    ],
+    "deny": [
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "NotebookEdit",
+      "WebFetch",
+      "WebSearch"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          { "type": "command", "command": "uv run --project .. python -m iamagents.hooks.domain_guard" }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          { "type": "command", "command": "uv run --project .. python -m iamagents.hooks.hop_limit" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          { "type": "command", "command": "uv run --project .. python -m iamagents.hooks.trace" }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "uv run --project .. python -m iamagents.hooks.result_schema" }
+        ]
+      }
+    ]
+  }
+}
