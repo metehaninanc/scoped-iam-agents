@@ -70,3 +70,20 @@
 **Numbers.** 5 tests, 0 ruff findings, dataset validator unchanged.
 
 **Next.** 0.8 mock services.
+
+## 2026-10-11: Sprint 0, task 0.8 mock services
+
+**Done.** SQLite mock services in `src/iamagents/services/`: tickets, HR events (E1 to E6), approval store, verification records, change requests, PAM request store, outbox. `MockServices` wires them to one database. `derive_fixtures(ticket, mode)` and `apply_fixtures` load per-ticket state.
+
+**Decisions.**
+* **Two fixtures are derived, not added to the dataset.** Verification: seeded for the requester only, never the target, and not at all when the ticket expects an `AM-01 verify_identity` step. Change request: seeded as issued by IG in `isolated` mode when the ticket expects `IG-04 issue_change_request`, not seeded in `integrated` mode. Documented in `data/DATASET.md`.
+* **Reason for requester-only verification.** Identity mismatch tickets must still fail on `requester_is_target` in the gateway.
+* **The approval store keeps no verdict.** Invalid approvals (wrong approver, self) are stored as recorded. Whether they count is the gateway's decision, so a model reading the store learns nothing the policy has not decided.
+* **HR events load only when referenced** (plus executed preconditions), so a ticket without an event finds none.
+* **Outbox secrets** are readable only through `open_message`, which tools must not call. `metadata` has no secret field.
+* Every fixture load records its mode, so a report states which mode produced it.
+* **Scoring note for 0.10.** In isolated mode compare only the actions of the agent under test, by rule prefix.
+
+**Numbers.** 26 unit tests pass (21 new), ruff clean. All 89 tickets apply in both modes.
+
+**Next.** 0.9 gateway skeleton.
