@@ -7,6 +7,7 @@ exercises the whole pipeline (fixtures, binding, audit, scoring, report) over an
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -46,6 +47,15 @@ class RunOutput:
     error: str | None = None
     schema_violation: bool = False
     stream_path: str | None = None
+
+
+AUTH_FAILURE = re.compile(
+    r"Failed to authenticate|Not logged in|OAuth session|/login|credit balance", re.I
+)
+
+
+class RunAborted(Exception):
+    """The run cannot continue (for example `claude` is not logged in); every ticket would fail alike."""
 
 
 class Runner(Protocol):
@@ -172,7 +182,9 @@ class ClaudeRunner:
                 out.cost_usd = res.get("total_cost_usd")
                 out.turns = res.get("num_turns")
                 if res.get("is_error"):
-                    out.error = f"run failed: {str(res.get('result'))[:200]!r}"
+                    text = str(res.get("result"))
+                    kind = "auth" if AUTH_FAILURE.search(text) else "run failed"
+                    out.error = f"{kind}: {text[:200]!r}"
             if len(out.session_ids) != 1 and not out.error:
                 # the hop counter assumes one ticket per session
                 out.error = f"expected exactly one session, saw {len(out.session_ids)}"

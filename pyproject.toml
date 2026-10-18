@@ -46,3 +46,4 @@ select = ["E", "F", "I", "B", "UP"]
 "tests/live/*" = ["E501"]
 "eval/*" = ["E501"]  # report tables and help strings
 "tests/unit/test_eval_*.py" = ["E501"]
+"tests/unit/test_tenant.py" = ["E501", "F811"]  # fixture imported from test_eval_harness

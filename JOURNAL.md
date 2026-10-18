@@ -223,3 +223,19 @@
 **Open.** The live smoke of one real ticket with `claude` (a few cents) waits for your OK. With the real tenant the dataset's `<tenant>.onmicrosoft.com` placeholder must be mapped to the real domain in prompts and fixtures (tenant tasks). The login for `state/claude-config` is still to be done by hand (S10 follow-up). Observed first and final agent follow simple rules (documented) that Sprint 5 may refine.
 
 **Next.** Tenant tasks 0.2 to 0.7 and 0.13, after the P2 trial is activated.
+
+## 2026-10-18: History purge, tenant domain mapping, live smoke blocked by login
+
+**Done.**
+* **History purge** (as agreed). Checked first: stash empty, the only refs were `main` and `origin/main` (still `Sprint0`), the stray `ORIG_HEAD` from the rebase was removed. Then `git reflog expire --expire=now --all` and `git gc --prune=now`. Afterwards the old commits cannot be read, `git log --all -p` shows no trace of the withheld details, and a search of all 241 objects in the database (decompressed contents) shows none. The reflog is empty.
+* **Transcripts.** The 22 `C--Projects-scoped-iam-agents-state-runtime-run-*` folders under `~/.claude/projects` were deleted, and one more that my smoke run created.
+* **Tenant domain.** `TENANT_DOMAIN` lives in `.env` (empty line in `.env.example`) and is mapped in at runtime by `iamagents/tenant.py`: into the tickets the harness loads, the fake Graph org and so the prompts and fixtures. The dataset, fake org, tests and docs keep `<tenant>.onmicrosoft.com`. Everything the harness writes is mapped back to the placeholder, and a last check refuses to write a report that still contains the real domain. A test reads the domain from `.env` and asserts it is in no tracked file and not in the git history.
+* **Abort on authentication failure.** The live smoke (ticket IAM-007, plan mode, fake Graph, haiku) failed with "OAuth session expired and could not be refreshed": the login of the default Claude config had lapsed. The failure was recorded as an error, as designed, and the gateway connection and the agent's tool set were correct. A full run would have repeated the error for every ticket, so the harness now stops at the first authentication failure with a clear message and writes nothing.
+
+**Decisions.** The domain is treated like a tenant id (CLAUDE.md rule 4): present only in `.env`, mapped at runtime, restored to the placeholder on output. Local state under `state/` (audit logs, run artifacts) may hold it because it is gitignored.
+
+**Numbers.** 426 unit tests pass (17 new), ruff clean.
+
+**Open.** The live smoke needs a fresh login: either in the default config or, preferably, in the dedicated `state/claude-config` (then `--isolated-config` runs it and the skipped isolation test can run).
+
+**Next.** Plan for 0.2 (seed config). The P2 trial starts right before 0.3.

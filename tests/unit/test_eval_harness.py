@@ -459,3 +459,29 @@ def test_parse_stream_ignores_noise_and_reads_the_facts():
     ]
     p = parse_stream("\n".join(lines))
     assert p["sessions"] == ["s1"] and p["dispatched"] == ["ds"] and p["result"]["result"] == "ok"
+
+
+def test_an_authentication_failure_aborts_the_run_instead_of_failing_every_ticket(
+    tmp_path, fake_claude
+):
+    from eval.runners import RunAborted
+
+    claude = fake_claude({"IAM-007": {"is_error": True, "final": final()}})
+    # the fake reports its text as the error; make it look like an expired login
+    import re
+
+    script = tmp_path / "fake" / "fake_claude.py"
+    script.write_text(
+        re.sub(
+            r'"result": text,',
+            '"result": "Failed to authenticate: OAuth session expired",',
+            script.read_text("utf-8"),
+        ),
+        encoding="utf-8",
+    )
+    c = cfg(tmp_path, agent="ds", split="dev", claude=claude, timeout=60)
+    with pytest.raises(RunAborted, match="Log in again"):
+        run_eval(c, log=lambda *_: None)
+    assert not list((tmp_path / "reports").rglob("*.md"))  # nothing written
+    # only the first ticket was tried
+    assert len([p for p in (tmp_path / "work" / "t").iterdir() if p.is_dir()]) == 1

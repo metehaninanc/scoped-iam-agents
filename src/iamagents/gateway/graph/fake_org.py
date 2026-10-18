@@ -37,11 +37,13 @@ def _seed_titles() -> dict[str, tuple[str, str]]:
     return titles
 
 
-def build_org() -> dict:
+def build_org(domain: str | None = None) -> dict:
     """Return users, groups and the protected sets as plain data."""
     v = _load_validate()
     names = _seed_titles()
-    upn = lambda prefix: f"{prefix}@{DOMAIN}"  # noqa: E731
+    domain = domain or DOMAIN
+    admin_upn = f"admin@{domain}"
+    upn = lambda prefix: f"{prefix}@{domain}"  # noqa: E731
 
     users = {}
     for prefix, (dept, mgr) in v.USERS.items():
@@ -59,10 +61,10 @@ def build_org() -> dict:
             "businessPhones": ["+49 30 5550 0001"],
             "signInActivity": {"lastSignInIpAddress": "203.0.113.7"},
         }
-    users[ADMIN_UPN.lower()] = {
-        "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, ADMIN_UPN)),
+    users[admin_upn.lower()] = {
+        "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, admin_upn)),
         "displayName": "Sandbox Admin",
-        "userPrincipalName": ADMIN_UPN,
+        "userPrincipalName": admin_upn,
         "department": "IT",
         "jobTitle": "Break glass",
         "accountEnabled": True,
@@ -82,5 +84,5 @@ def build_org() -> dict:
             "members": [upn(m) for m in members],
         }
 
-    rmau_users = {upn(p).lower() for p in v.PRIVILEGED} | {ADMIN_UPN.lower()}
+    rmau_users = {upn(p).lower() for p in v.PRIVILEGED} | {admin_upn.lower()}
     return {"users": users, "groups": groups, "rmau_users": rmau_users}

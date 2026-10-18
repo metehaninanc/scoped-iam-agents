@@ -12,7 +12,10 @@ class TicketStore:
 
     def load_dataset(self, path: str | Path) -> int:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
-        rows = [json.loads(line) for line in lines if line.strip()]
+        return self.load_rows([json.loads(line) for line in lines if line.strip()])
+
+    def load_rows(self, rows: list[dict]) -> int:
+        """Load ticket dicts, for example the dataset with the tenant domain mapped in."""
         with self.db.conn:
             self.db.conn.execute("DELETE FROM tickets")
             self.db.conn.executemany(

@@ -115,8 +115,8 @@ class FakeGraphClient:
 
 
 class FakeGraphFactory:
-    def __init__(self, directory: FakeDirectory | None = None):
-        self.directory = directory or FakeDirectory()
+    def __init__(self, directory: FakeDirectory | None = None, domain: str | None = None):
+        self.directory = directory or FakeDirectory(fake_org.build_org(domain))
 
     def for_agent(self, agent: str) -> GraphClient:
         return FakeGraphClient(self.directory, agent)

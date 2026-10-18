@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from iamagents import tenant
 from iamagents.gateway.audit import AuditLog
 from iamagents.gateway.config import ROOT, Settings
 from iamagents.gateway.core import Gateway
@@ -33,7 +34,7 @@ from iamagents.services.mock import MockServices
 
 from . import report as reporting
 from .prompt import build_prompt
-from .runners import ClaudeRunner, RunContext, Runner, StubRunner
+from .runners import ClaudeRunner, RunAborted, RunContext, Runner, StubRunner
 from .scoring import WRITE_TOOLS, Observations, agent_label, score_ticket
 
 AGENTS = ("ds", "am", "ig", "pam", "team-lead", "stub")
@@ -61,6 +62,7 @@ class EvalConfig:
     milestone: bool = False
     heldout_final: bool = False
     dataset: Path = DATASET
+    tenant_domain: str | None = None  # mapped in for the run; None keeps the placeholder
     report_base: Path = reporting.REPORT_DIR
     work_base: Path = WORK_BASE
     use_config_dir: bool = False
@@ -77,8 +79,9 @@ class EvalConfig:
         )
 
 
-def load_dataset(path: Path) -> list[dict]:
-    return [json.loads(x) for x in Path(path).read_text(encoding="utf-8").splitlines() if x.strip()]
+def load_dataset(path: Path, domain: str | None = None) -> list[dict]:
+    rows = [json.loads(x) for x in Path(path).read_text(encoding="utf-8").splitlines() if x.strip()]
+    return tenant.apply(rows, domain)
 
 
 def select_tickets(tickets: list[dict], cfg: EvalConfig) -> tuple[list[dict], list[dict]]:
@@ -151,7 +154,7 @@ def build_gateway(cfg: EvalConfig, work_dir: Path) -> Gateway:
         settings,
         Policy.load(settings.policy_path),
         MockServices(),
-        FakeGraphFactory(),
+        FakeGraphFactory(domain=cfg.tenant_domain),
         AuditLog(settings.audit_path),
     )
 
@@ -163,7 +166,7 @@ def make_runner(cfg: EvalConfig) -> Runner:
 
 
 def run_eval(cfg: EvalConfig, log=print) -> dict:
-    tickets = load_dataset(cfg.dataset)
+    tickets = load_dataset(cfg.dataset, cfg.tenant_domain)
     by_id = {t["ticket_id"]: t for t in tickets}
     selected, skipped = select_tickets(tickets, cfg)
     lock = check_heldout_guard(cfg, selected)
@@ -172,7 +175,7 @@ def run_eval(cfg: EvalConfig, log=print) -> dict:
     work_dir.mkdir(parents=True, exist_ok=True)
 
     gw = build_gateway(cfg, work_dir)
-    gw.services.tickets.load_dataset(cfg.dataset)
+    gw.services.tickets.load_rows(tickets)
     runner = make_runner(cfg)
     server = None
     if runner.name == "claude":
@@ -186,7 +189,9 @@ def run_eval(cfg: EvalConfig, log=print) -> dict:
         for i, ticket in enumerate(selected, start=1):
             tid = ticket["ticket_id"]
             apply_fixtures(gw.services, ticket, cfg.fixtures)
-            gw.set_graph_factory(FakeGraphFactory())  # the directory is reset after every ticket
+            gw.set_graph_factory(
+                FakeGraphFactory(domain=cfg.tenant_domain)
+            )  # reset after every ticket
             gw.bind_ticket(tid)
             start = len(gw.audit.read_all())
             ctx = RunContext(
@@ -195,6 +200,12 @@ def run_eval(cfg: EvalConfig, log=print) -> dict:
                 max_turns=cfg.max_turns, timeout=cfg.timeout, use_config_dir=cfg.use_config_dir,
             )  # fmt: skip
             out = runner.run(ctx)
+            if out.error and out.error.startswith("auth:"):
+                gw.unbind_ticket()
+                raise RunAborted(
+                    f"{out.error}. Log in again (for the dedicated config dir: run claude with "
+                    "CLAUDE_CONFIG_DIR=state/claude-config) and rerun; nothing was written."
+                )
             records = [r for r in gw.audit.read_all()[start:] if r.get("agent") != "harness"]
             obs = Observations(
                 audit=records, dispatched=out.dispatched, schema_violation=out.schema_violation,
@@ -254,7 +265,9 @@ def run_eval(cfg: EvalConfig, log=print) -> dict:
     secrets = env_secrets() + list(gw.run_token_values)
     report["paths"] = {
         k: str(v)
-        for k, v in reporting.write_reports(report, cfg.milestone, secrets, cfg.report_base).items()
+        for k, v in reporting.write_reports(
+            report, cfg.milestone, secrets, cfg.report_base, domain=cfg.tenant_domain
+        ).items()
     }
     if lock is not None:
         lock.parent.mkdir(parents=True, exist_ok=True)
@@ -312,8 +325,9 @@ def parse_args(argv: list[str] | None = None) -> EvalConfig:
 def main(argv: list[str] | None = None) -> int:
     cfg = parse_args(argv)
     try:
+        cfg.tenant_domain = tenant.tenant_domain()  # from .env; None when not set
         report = run_eval(cfg)
-    except (HeldoutLocked, reporting.SecretInReport) as e:
+    except (HeldoutLocked, reporting.SecretInReport, tenant.TenantDomainError, RunAborted) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
     s = report["summary"]

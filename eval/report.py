@@ -10,6 +10,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from iamagents import tenant
+
 from .scoring import TicketScore
 
 REPORT_DIR = Path(__file__).resolve().parent / "reports"
@@ -168,17 +170,25 @@ def render_markdown(report: dict) -> str:
 
 
 def write_reports(
-    report: dict, milestone: bool, secrets: list[str], base: Path | None = None
+    report: dict,
+    milestone: bool,
+    secrets: list[str],
+    base: Path | None = None,
+    domain: str | None = None,
 ) -> dict:
     """Write JSON (always local) and Markdown (committed folder for milestone runs only)."""
     base = base or REPORT_DIR
     label = report["meta"]["label"]
     if not re.fullmatch(r"[A-Za-z0-9._-]+", label):
         raise ValueError("report label may only contain letters, digits, dot, dash, underscore")
-    js = json.dumps(report, indent=2, ensure_ascii=False)
+    # The real tenant domain is mapped back to the placeholder before anything is written, and a
+    # last check refuses to write a file that still contains it (reports may be committed).
+    js = tenant.to_placeholder(json.dumps(report, indent=2, ensure_ascii=False), domain)
     assert_clean(js, secrets)
-    md = render_markdown(report)
+    tenant.assert_absent(js, domain)
+    md = tenant.to_placeholder(render_markdown(report), domain)
     assert_clean(md, secrets)
+    tenant.assert_absent(md, domain)
     (base / "local").mkdir(parents=True, exist_ok=True)
     paths = {"json": base / "local" / f"{label}.json"}
     paths["json"].write_text(js, encoding="utf-8")
