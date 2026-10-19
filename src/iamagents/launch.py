@@ -4,9 +4,9 @@ Spike S10 found these problems with running `claude -p` straight from `runtime/`
 tokens in the environment:
 
 1. Claude Code can substitute environment variable values into tool input: the value reaches the
-   model's context, the transcript and, for gateway tools, the audit log. This is reported to the
-   vendor and the details are withheld until it is fixed. Consequence: the process environment
-   must hold no secret at all. `scrubbed_env` passes an allowlist only.
+   model's context, the transcript and, for gateway tools, the audit log. This was observed in
+   our own runs and the mechanics are not published. Consequence: the process environment must
+   hold no secret at all. `scrubbed_env` passes an allowlist only.
 2. The tokens therefore live as literals in a rendered copy of the agent files, not in the
    environment. `render_runtime` writes that copy to a fresh directory and `cleanup` removes it.
 3. Claude Code only loads the inline MCP servers of agent files in a trusted workspace, and it
