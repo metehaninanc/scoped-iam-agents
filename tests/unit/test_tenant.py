@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 
 import pytest
@@ -147,16 +148,25 @@ def test_cli_maps_the_domain_from_the_environment(tmp_path, monkeypatch):
     assert seen["cfg"].tenant_domain == FAKE_DOMAIN
 
 
-def test_the_real_tenant_domain_is_in_no_tracked_file():
-    """Guard for CLAUDE.md rule 4. Uses the domain in .env; skipped when none is set."""
-    domain = tenant.tenant_domain()
-    if not domain:
-        pytest.skip("no TENANT_DOMAIN in .env")
+def env_values(*names):
+    """Values of the given variables in .env (never printed)."""
+    from iamagents.gateway.config import load_env_file
+
+    load_env_file(ROOT / ".env")
+    return [v.strip().lower() for n in names if (v := os.environ.get(n, "")).strip()]
+
+
+def test_real_tenant_values_are_in_no_tracked_file_and_not_in_history():
+    """Guard for CLAUDE.md rule 4: the tenant domain and both admin addresses live in .env only."""
+    values = env_values("TENANT_DOMAIN", "TENANT_ADMIN_UPN", "BREAKGLASS_UPN")
+    if not values:
+        pytest.skip("no tenant values in .env")
     files = subprocess.run(
         ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True
     ).stdout.split()
-    leaks = [f for f in files if domain in (ROOT / f).read_text("utf-8", errors="ignore").lower()]
-    assert leaks == []
+    for f in files:
+        text = (ROOT / f).read_text("utf-8", errors="ignore").lower()
+        assert not [v for v in values if v in text], f  # the file name only, never the value
     log = subprocess.run(
         ["git", "log", "--all", "-p"],
         cwd=ROOT,
@@ -164,5 +174,5 @@ def test_the_real_tenant_domain_is_in_no_tracked_file():
         text=True,
         encoding="utf-8",
         errors="ignore",
-    ).stdout
-    assert domain not in log.lower()  # not in history either
+    ).stdout.lower()
+    assert not [v for v in values if v in log]
