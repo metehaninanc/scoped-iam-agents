@@ -18,6 +18,7 @@ global:
   protected_groups: [ "DG-*", "PRIV-*" ]
   approval_source: approval_store  # mock service, agents have no write access
   hr_source: hr_events             # mock service, agents have no write access
+  license_cap: 25                  # seats the fictional company has bought; IG-01 refuses a joiner at the cap, seed.py stops at it
 
 # Bearer token -> agent -> Entra identity and tool list. Must match runtime/.claude/agents/*.md.
 # Reroutes are not a tool: a domain agent returns route_to in its result JSON and the team lead re-dispatches.
@@ -120,6 +121,10 @@ rules:
     action: joiner
     tier: T2
     require: [hr_event_type_joiner, free_license_seat, baseline_access_only]
+    # Attributes IG-01 must set when it creates the account. employeeType puts the joiner into
+    # AU-Workforce (rule: userType Member and employeeType Employee), the scope of the agents'
+    # write roles. Without it the new account would be out of every agent's reach.
+    create_attributes: { userType: Member, employeeType: Employee, usageLocation: DE }
     iso27001: [A.5.16]
 
   - id: IG-02

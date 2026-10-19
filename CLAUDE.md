@@ -57,6 +57,7 @@ uv run pytest tests/unit
 uv run pytest tests/live -m live        # asks first, touches the tenant
 uv run python -m eval.harness --mode plan --agent ds --split dev   # runs claude -p --agent ds per ticket
 uv run python data/validate.py data/iam-tickets-v2.jsonl
+uv run python -m seed.generate_tenant       # seed/tenant.yaml from seed/seed-org.md (add --check to verify)
 ```
 
 ## Writing

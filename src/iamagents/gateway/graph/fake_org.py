@@ -1,88 +1,74 @@
-"""Seed org data for the fake Graph, taken from the repo's own sources.
+"""Seed org data for the fake Graph, built from `seed/tenant.yaml`.
 
-Users come from the table in `seed/seed-org.md`, groups and memberships from the constants in
-`data/validate.py`. Task 0.2 replaces both with `seed/tenant.yaml`.
+`tenant.yaml` is the single source (generated from `seed/seed-org.md`). The fake adds fields a
+real Graph object has and the minimiser must drop (phone numbers, sign-in IP addresses), so the
+tests can show they never reach the model.
 """
 
-import importlib.util
-import re
 import uuid
 from pathlib import Path
 
+from ...seedconfig import Tenant, group_members, load_tenant, resolve_accounts
+
 ROOT = Path(__file__).resolve().parents[4]
 DOMAIN = "<tenant>.onmicrosoft.com"
-ADMIN_UPN = f"admin@{DOMAIN}"
-
-_ROW = re.compile(
-    r"^\|\s*\d+\s*\|\s*([a-z.]+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|$"
-)
 
 
-def _load_validate():
-    spec = importlib.util.spec_from_file_location(
-        "iam_dataset_validate", ROOT / "data" / "validate.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _seed_titles() -> dict[str, tuple[str, str]]:
-    titles = {}
-    for line in (ROOT / "seed" / "seed-org.md").read_text(encoding="utf-8").splitlines():
-        m = _ROW.match(line.strip())
-        if m:
-            prefix, name, title, _dept, _mgr = m.groups()
-            titles[prefix] = (name, title)
-    return titles
-
-
-def build_org(domain: str | None = None) -> dict:
-    """Return users, groups and the protected sets as plain data."""
-    v = _load_validate()
-    names = _seed_titles()
+def build_org(domain: str | None = None, tenant: Tenant | None = None) -> dict:
+    """Users, groups and the protected sets as plain data. Admin account addresses are made up
+    from the domain (`admin@`, `breakglass@`); the real ones are only read at seed time."""
     domain = domain or DOMAIN
-    admin_upn = f"admin@{domain}"
+    tenant = tenant or load_tenant()
     upn = lambda prefix: f"{prefix}@{domain}"  # noqa: E731
 
     users = {}
-    for prefix, (dept, mgr) in v.USERS.items():
-        name, title = names[prefix]
-        users[upn(prefix).lower()] = {
-            "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, upn(prefix))),
-            "displayName": name,
-            "userPrincipalName": upn(prefix),
-            "department": dept,
-            "jobTitle": title,
+    for u in tenant.users:
+        address = upn(u.upn_prefix)
+        users[address.lower()] = {
+            "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, address)),
+            "displayName": u.display_name,
+            "userPrincipalName": address,
+            "department": u.department,
+            "jobTitle": u.job_title,
+            "employeeType": u.employee_type,
+            "userType": u.user_type,
             "accountEnabled": True,
-            "manager": {"userPrincipalName": upn(mgr)} if mgr else None,
+            "manager": {"userPrincipalName": upn(u.manager)} if u.manager else None,
             # Fields that must never reach the model; the minimiser has to drop them.
             "mobilePhone": "+49 30 5550 0000",
             "businessPhones": ["+49 30 5550 0001"],
             "signInActivity": {"lastSignInIpAddress": "203.0.113.7"},
         }
-    users[admin_upn.lower()] = {
-        "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, admin_upn)),
-        "displayName": "Sandbox Admin",
-        "userPrincipalName": admin_upn,
-        "department": "IT",
-        "jobTitle": "Break glass",
-        "accountEnabled": True,
-        "manager": None,
-        "mobilePhone": None,
-        "businessPhones": [],
-        "signInActivity": {},
-    }
-
-    groups = {}
-    for name, (klass, owner, members) in v.GROUPS.items():
-        groups[name] = {
-            "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, name)),
-            "displayName": name,
-            "class": klass,
-            "owners": [upn(owner)] if owner else [],
-            "members": [upn(m) for m in members],
+    accounts = resolve_accounts(tenant, None, domain)
+    for a in tenant.accounts:
+        address = accounts[a.key]
+        users[address.lower()] = {
+            "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, address)),
+            "displayName": "Emergency access" if a.key == "breakglass" else "Admin",
+            "userPrincipalName": address,
+            "department": None,
+            "jobTitle": None,
+            "employeeType": None,
+            "userType": "Member",
+            "accountEnabled": True,
+            "manager": None,
+            "mobilePhone": None,
+            "businessPhones": [],
+            "signInActivity": {},
         }
 
-    rmau_users = {upn(p).lower() for p in v.PRIVILEGED} | {admin_upn.lower()}
+    groups = {}
+    for g in tenant.groups:
+        groups[g.name] = {
+            "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, g.name)),
+            "displayName": g.name,
+            "class": g.klass,
+            "owners": [upn(g.owner)] if g.owner else [],
+            "members": [upn(m) for m in group_members(tenant, g)],
+        }
+
+    privileged = {u.upn_prefix for u in tenant.users if u.employee_type == "Privileged"}
+    rmau_users = {upn(p).lower() for p in privileged} | {
+        accounts[a.key].lower() for a in tenant.accounts if a.in_rmau
+    }
     return {"users": users, "groups": groups, "rmau_users": rmau_users}

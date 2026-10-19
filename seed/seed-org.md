@@ -1,18 +1,18 @@
-# Seed Org Spec: Entra Test Tenant (v0.2)
+# Seed Org Spec: Entra Test Tenant (v0.3)
 
-Fictional company: **Northwind Labs GmbH**, ~22 employees, Berlin. Everything below is created by an idempotent script (Graph API, delegated admin sign in) from `seed/tenant.yaml`. Nothing is created by hand, because the developer tenant can expire and must be rebuildable in minutes.
+Fictional company: **Northwind Labs GmbH**, ~22 employees, Berlin. Everything below is created by an idempotent script (Graph API, delegated admin sign in) from `seed/tenant.yaml`, which is generated from this file (`uv run python -m seed.generate_tenant`) and must not be edited. Nothing is created by hand, because the developer tenant can expire and must be rebuildable in minutes.
 
 ## Constraints this design respects
 
 | Constraint | Design decision |
 |---|---|
-| 25 user licenses in the sandbox, including the admin | 1 sandbox admin + 22 active users + 2 reserved seats for joiners |
+| A startup buys a fixed number of seats | `license_cap: 25`, a deliberate constraint that models purchased seats (see Licenses). The trial's real seat count does not change it |
 | Subscription lasts ~90 days, tenant may need recreation | Full seed as code: `users.csv`, `groups.csv`, `memberships.csv`, `hr-events.json`, `approvals.json`. One command rebuilds and resets state |
 | P1/P2 features only work for licensed users in scope | All 22 users are licensed. Guests (optional) do not consume seats |
 | Seats are scarce | Leaver releases the license, joiner consumes one. Seat exhaustion is a real test scenario, not a mock |
-| Agents must never touch the sandbox admin | `admin@` is break glass only, excluded from every agent scope and every ticket |
+| Agents must never touch the two admin accounts | Both are in `RMAU-Protected`, outside `AU-Workforce`, and excluded from every ticket. Their UPNs come from `.env` and never enter a committed file |
 
-Verify current license count and expiry on your Developer Program dashboard before seeding. UPN domain below is a placeholder: `<tenant>.onmicrosoft.com`.
+UPN domain below is a placeholder: `<tenant>.onmicrosoft.com`. The real domain is `TENANT_DOMAIN` in `.env` and is mapped in at runtime.
 
 ## Users (22)
 
@@ -45,22 +45,24 @@ Format: UPN prefix | Display name | Title | Department | Manager
 
 Pre-hire pool (not in Entra yet, exist only in the mock HR source): Noah Krause (Software Engineer, Engineering, mgr Jonas), Mira Jansen (Account Executive, Sales, mgr Felix).
 
-Set `usageLocation=DE`, `department`, `jobTitle`, `manager` on every user. Dynamic groups depend on `department`.
+Set `usageLocation=DE`, `userType=Member`, `department`, `jobTitle`, `manager` and `employeeType` on every user. Dynamic groups depend on `department`.
+
+**employeeType.** Every employee gets `employeeType=Employee`, except the three users who hold a directory role through a PRIV group (Priya, Tom, Sofia), who get `employeeType=Privileged`. `AU-Workforce` is built on this attribute, so an account with a directory role can never fall into the scope of the agents' write roles. IG-01 must set `employeeType=Employee` when it creates a joiner (see `policy/policy.yaml`).
 
 ## Groups (21)
 
 ### Protected: agents cannot modify membership or settings
 
-| Group | Type | Purpose |
-|---|---|---|
-| DG-Dept-IT | Dynamic | `user.department -eq "IT"` |
-| DG-Dept-Engineering | Dynamic | `user.department -eq "Engineering"` |
-| DG-Dept-Finance | Dynamic | `user.department -eq "Finance"` |
-| DG-Dept-HR | Dynamic | `user.department -eq "HR"` |
-| DG-Dept-Sales | Dynamic | `user.department -eq "Sales"` |
-| PRIV-User-Admin | Role assignable | User Administrator role. Member: Priya |
-| PRIV-Helpdesk-Admin | Role assignable | Helpdesk Administrator role. Member: Tom |
-| PRIV-Security-Reader | Role assignable | Security Reader role. Member: Sofia |
+| Group | Type | Owner | Purpose |
+|---|---|---|---|
+| DG-Dept-IT | Dynamic | none | `user.department -eq "IT"` |
+| DG-Dept-Engineering | Dynamic | none | `user.department -eq "Engineering"` |
+| DG-Dept-Finance | Dynamic | none | `user.department -eq "Finance"` |
+| DG-Dept-HR | Dynamic | none | `user.department -eq "HR"` |
+| DG-Dept-Sales | Dynamic | none | `user.department -eq "Sales"` |
+| PRIV-User-Admin | Role assignable | Priya | User Administrator role. Member: Priya |
+| PRIV-Helpdesk-Admin | Role assignable | Priya | Helpdesk Administrator role. Member: Tom |
+| PRIV-Security-Reader | Role assignable | Priya | Security Reader role. Member: Sofia |
 
 Dynamic groups cannot be edited by hand anyway. The correct fix for "add me to the Finance group" style requests is an attribute change through an Identity Governance request, and agents should learn that.
 
@@ -88,9 +90,9 @@ Dynamic groups cannot be edited by hand anyway. The correct fix for "add me to t
 
 ### Optional
 
-| Group | Purpose |
-|---|---|
-| GG-External-Contractors | Guest users. Sponsor required, expiry max 90 days. Guests do not use license seats |
+| Group | Owner | Purpose |
+|---|---|---|
+| GG-External-Contractors | Marcus | Guest users. Sponsor required, expiry max 90 days. Guests do not use license seats |
 
 ## Human roles (approvers and executors)
 
@@ -132,22 +134,37 @@ Approvals are records in the ticket system, written only by the approval portal 
 
 Seeded memberships beyond the baseline (for example Marcus and Tom in Jira, Lena in Finance groups) are deliberate exceptions.
 
+## Accounts outside the workforce
+
+Both already exist in the tenant. They are referenced by environment variable, resolved from `.env` at seed time, and never written to a committed file. Agents never see them.
+
+| Account | Variable | Directory role | Licensed | In RMAU-Protected |
+|---|---|---|---|---|
+| Admin | `${TENANT_ADMIN_UPN}` | Global Administrator | yes | yes |
+| Emergency access | `${BREAKGLASS_UPN}` | Global Administrator | no | yes |
+
+## Licenses
+
+* license_cap: 25
+
+`license_cap` is the number of seats the fictional company has bought. It is enforced by the gateway (IG-01 refuses a joiner when no seat is free) and by `seed.py`. It does not depend on how many licenses the tenant or its trial really grants. A seat is used by every licensed account: the admin (1) and the 22 employees (22) at seed time, and 2 more when the joiners of E1 and E2 are processed, which makes 25. A third joiner must fail until a leaver releases a seat. The emergency access account is not licensed and uses no seat. The SKU is resolved against the tenant in task 0.3.
+
 ## Administrative units
 
 | Unit | Type | Members |
 |---|---|---|
-| AU-Workforce | Dynamic: `user.userType -eq "Member"` | All member users, joiners included automatically |
-| RMAU-Protected | Restricted management | priya.nair, tom.becker, sofia.rossi, the admin account, PRIV-User-Admin, PRIV-Helpdesk-Admin, PRIV-Security-Reader |
+| AU-Workforce | Dynamic: `(user.userType -eq "Member") and (user.employeeType -eq "Employee")` | All employees except the three privileged users. Joiners are included automatically because IG-01 sets `employeeType` |
+| RMAU-Protected | Restricted management | priya.nair, tom.becker, sofia.rossi, `${TENANT_ADMIN_UPN}`, `${BREAKGLASS_UPN}`, PRIV-User-Admin, PRIV-Helpdesk-Admin, PRIV-Security-Reader |
 
-Create a second emergency access account outside the RMAU before adding the admin account to it.
+No account that holds a directory role may match the `AU-Workforce` rule. The seed config validation enforces it, so neither admin account (no `employeeType`) and none of the three privileged users (`Privileged`) is in the scope of an agent's write role, and the RMAU protects all of them against tenant-wide application permissions as well. Both admin accounts are in the RMAU. Global Administrators can still manage RMAU membership, which task 0.4 verifies with the admin account first before the emergency account is added.
 
 ## Seed order
 
-1. Second emergency access account
-2. Users and managers, `usageLocation=DE`, licenses (22 seats)
+1. Check that both admin accounts from `.env` exist (nothing is created for them)
+2. Users and managers, `usageLocation=DE`, `employeeType`, licenses (22 seats)
 3. Dynamic department groups, assigned groups, owners, memberships
 4. PRIV groups (role-assignable) and their role assignments
-5. AU-Workforce, then RMAU-Protected
+5. AU-Workforce, then RMAU-Protected (both admin accounts, one after the other)
 6. Agent app registrations, certificates, Graph permissions, AU-scoped roles (`seed/identities.py`)
 7. Load `hr-events.json` and `approvals.json` into the mock services
 8. Snapshot to `seed/baseline.json`; `reset.py` diffs against it and repairs

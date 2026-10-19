@@ -1,0 +1,435 @@
+# Generated from seed/seed-org.md by seed/generate_tenant.py. Do not edit: change the
+# markdown and run `uv run python -m seed.generate_tenant`.
+domain: <tenant>.onmicrosoft.com
+licenses:
+  cap: 25
+accounts:
+- key: admin
+  upn: ${TENANT_ADMIN_UPN}
+  roles:
+  - Global Administrator
+  licensed: true
+  in_rmau: true
+- key: breakglass
+  upn: ${BREAKGLASS_UPN}
+  roles:
+  - Global Administrator
+  licensed: false
+  in_rmau: true
+users:
+- upn_prefix: lena.hoffmann
+  display_name: Lena Hoffmann
+  given_name: Lena
+  surname: Hoffmann
+  job_title: CEO
+  department: Executive
+  manager: null
+  employee_type: Employee
+- upn_prefix: marcus.weber
+  display_name: Marcus Weber
+  given_name: Marcus
+  surname: Weber
+  job_title: IT Manager
+  department: IT
+  manager: lena.hoffmann
+  employee_type: Employee
+- upn_prefix: priya.nair
+  display_name: Priya Nair
+  given_name: Priya
+  surname: Nair
+  job_title: IAM Administrator
+  department: IT
+  manager: marcus.weber
+  employee_type: Privileged
+- upn_prefix: tom.becker
+  display_name: Tom Becker
+  given_name: Tom
+  surname: Becker
+  job_title: Helpdesk Technician
+  department: IT
+  manager: marcus.weber
+  employee_type: Privileged
+- upn_prefix: sofia.rossi
+  display_name: Sofia Rossi
+  given_name: Sofia
+  surname: Rossi
+  job_title: Security Analyst
+  department: IT
+  manager: marcus.weber
+  employee_type: Privileged
+- upn_prefix: jonas.keller
+  display_name: Jonas Keller
+  given_name: Jonas
+  surname: Keller
+  job_title: Engineering Manager
+  department: Engineering
+  manager: lena.hoffmann
+  employee_type: Employee
+- upn_prefix: amira.haddad
+  display_name: Amira Haddad
+  given_name: Amira
+  surname: Haddad
+  job_title: Senior Software Engineer
+  department: Engineering
+  manager: jonas.keller
+  employee_type: Employee
+- upn_prefix: leo.fischer
+  display_name: Leo Fischer
+  given_name: Leo
+  surname: Fischer
+  job_title: Software Engineer
+  department: Engineering
+  manager: jonas.keller
+  employee_type: Employee
+- upn_prefix: nina.petrova
+  display_name: Nina Petrova
+  given_name: Nina
+  surname: Petrova
+  job_title: DevOps Engineer
+  department: Engineering
+  manager: jonas.keller
+  employee_type: Employee
+- upn_prefix: daniel.okafor
+  display_name: Daniel Okafor
+  given_name: Daniel
+  surname: Okafor
+  job_title: Software Engineer
+  department: Engineering
+  manager: jonas.keller
+  employee_type: Employee
+- upn_prefix: mei.tanaka
+  display_name: Mei Tanaka
+  given_name: Mei
+  surname: Tanaka
+  job_title: QA Engineer
+  department: Engineering
+  manager: jonas.keller
+  employee_type: Employee
+- upn_prefix: clara.schmidt
+  display_name: Clara Schmidt
+  given_name: Clara
+  surname: Schmidt
+  job_title: Finance Manager
+  department: Finance
+  manager: lena.hoffmann
+  employee_type: Employee
+- upn_prefix: ben.altmann
+  display_name: Ben Altmann
+  given_name: Ben
+  surname: Altmann
+  job_title: Financial Analyst
+  department: Finance
+  manager: clara.schmidt
+  employee_type: Employee
+- upn_prefix: ines.duarte
+  display_name: Ines Duarte
+  given_name: Ines
+  surname: Duarte
+  job_title: Accounts Payable Clerk
+  department: Finance
+  manager: clara.schmidt
+  employee_type: Employee
+- upn_prefix: oskar.lindqvist
+  display_name: Oskar Lindqvist
+  given_name: Oskar
+  surname: Lindqvist
+  job_title: Accountant
+  department: Finance
+  manager: clara.schmidt
+  employee_type: Employee
+- upn_prefix: hanna.brandt
+  display_name: Hanna Brandt
+  given_name: Hanna
+  surname: Brandt
+  job_title: HR Manager
+  department: HR
+  manager: lena.hoffmann
+  employee_type: Employee
+- upn_prefix: yusuf.demir
+  display_name: Yusuf Demir
+  given_name: Yusuf
+  surname: Demir
+  job_title: HR Specialist
+  department: HR
+  manager: hanna.brandt
+  employee_type: Employee
+- upn_prefix: katja.moser
+  display_name: Katja Moser
+  given_name: Katja
+  surname: Moser
+  job_title: Recruiter
+  department: HR
+  manager: hanna.brandt
+  employee_type: Employee
+- upn_prefix: felix.wagner
+  display_name: Felix Wagner
+  given_name: Felix
+  surname: Wagner
+  job_title: Sales Manager
+  department: Sales
+  manager: lena.hoffmann
+  employee_type: Employee
+- upn_prefix: zoe.martin
+  display_name: Zoe Martin
+  given_name: Zoe
+  surname: Martin
+  job_title: Account Executive
+  department: Sales
+  manager: felix.wagner
+  employee_type: Employee
+- upn_prefix: arjun.mehta
+  display_name: Arjun Mehta
+  given_name: Arjun
+  surname: Mehta
+  job_title: Sales Development Rep
+  department: Sales
+  manager: felix.wagner
+  employee_type: Employee
+- upn_prefix: elena.costa
+  display_name: Elena Costa
+  given_name: Elena
+  surname: Costa
+  job_title: Customer Success Manager
+  department: Sales
+  manager: felix.wagner
+  employee_type: Employee
+pre_hires:
+- upn_prefix: noah.krause
+  display_name: Noah Krause
+  job_title: Software Engineer
+  department: Engineering
+  manager: jonas.keller
+- upn_prefix: mira.jansen
+  display_name: Mira Jansen
+  job_title: Account Executive
+  department: Sales
+  manager: felix.wagner
+groups:
+- name: DG-Dept-IT
+  kind: dynamic
+  class: protected
+  owner: null
+  rule: user.department -eq "IT"
+- name: DG-Dept-Engineering
+  kind: dynamic
+  class: protected
+  owner: null
+  rule: user.department -eq "Engineering"
+- name: DG-Dept-Finance
+  kind: dynamic
+  class: protected
+  owner: null
+  rule: user.department -eq "Finance"
+- name: DG-Dept-HR
+  kind: dynamic
+  class: protected
+  owner: null
+  rule: user.department -eq "HR"
+- name: DG-Dept-Sales
+  kind: dynamic
+  class: protected
+  owner: null
+  rule: user.department -eq "Sales"
+- name: PRIV-User-Admin
+  kind: role_assignable
+  class: protected
+  owner: priya.nair
+  role: User Administrator
+  members:
+  - priya.nair
+- name: PRIV-Helpdesk-Admin
+  kind: role_assignable
+  class: protected
+  owner: priya.nair
+  role: Helpdesk Administrator
+  members:
+  - tom.becker
+- name: PRIV-Security-Reader
+  kind: role_assignable
+  class: protected
+  owner: priya.nair
+  role: Security Reader
+  members:
+  - sofia.rossi
+- name: SG-Wiki-All
+  kind: assigned
+  class: open
+  owner: marcus.weber
+  members:
+  - lena.hoffmann
+  - marcus.weber
+  - priya.nair
+  - tom.becker
+  - sofia.rossi
+  - jonas.keller
+  - amira.haddad
+  - leo.fischer
+  - nina.petrova
+  - daniel.okafor
+  - mei.tanaka
+  - clara.schmidt
+  - ben.altmann
+  - ines.duarte
+  - oskar.lindqvist
+  - hanna.brandt
+  - yusuf.demir
+  - katja.moser
+  - felix.wagner
+  - zoe.martin
+  - arjun.mehta
+  - elena.costa
+- name: SG-VPN-Users
+  kind: assigned
+  class: open
+  owner: marcus.weber
+  members:
+  - lena.hoffmann
+  - marcus.weber
+  - priya.nair
+  - tom.becker
+  - sofia.rossi
+  - jonas.keller
+  - amira.haddad
+  - leo.fischer
+  - nina.petrova
+  - daniel.okafor
+  - mei.tanaka
+  - clara.schmidt
+  - ben.altmann
+  - ines.duarte
+  - oskar.lindqvist
+  - hanna.brandt
+  - yusuf.demir
+  - katja.moser
+  - felix.wagner
+  - zoe.martin
+  - arjun.mehta
+  - elena.costa
+- name: SG-App-Jira
+  kind: assigned
+  class: open
+  owner: jonas.keller
+  members:
+  - jonas.keller
+  - amira.haddad
+  - leo.fischer
+  - nina.petrova
+  - daniel.okafor
+  - mei.tanaka
+  - marcus.weber
+  - tom.becker
+- name: SG-App-CRM
+  kind: assigned
+  class: open
+  owner: felix.wagner
+  members:
+  - felix.wagner
+  - zoe.martin
+  - arjun.mehta
+  - elena.costa
+- name: SG-App-ERP-Read
+  kind: assigned
+  class: open
+  owner: clara.schmidt
+  members:
+  - clara.schmidt
+  - ben.altmann
+  - ines.duarte
+  - oskar.lindqvist
+  - lena.hoffmann
+- name: SG-Share-Finance-Reports
+  kind: assigned
+  class: open
+  owner: clara.schmidt
+  members:
+  - clara.schmidt
+  - ben.altmann
+  - ines.duarte
+  - oskar.lindqvist
+  - lena.hoffmann
+- name: SG-Share-Eng-Repos
+  kind: assigned
+  class: open
+  owner: jonas.keller
+  members:
+  - jonas.keller
+  - amira.haddad
+  - leo.fischer
+  - nina.petrova
+  - daniel.okafor
+  - mei.tanaka
+- name: SG-Share-Sales-Collateral
+  kind: assigned
+  class: open
+  owner: felix.wagner
+  members:
+  - felix.wagner
+  - zoe.martin
+  - arjun.mehta
+  - elena.costa
+- name: SG-App-ERP-Create
+  kind: assigned
+  class: restricted
+  owner: clara.schmidt
+  members:
+  - ines.duarte
+  - oskar.lindqvist
+- name: SG-App-ERP-Approve
+  kind: assigned
+  class: restricted
+  owner: clara.schmidt
+  members:
+  - clara.schmidt
+  - ben.altmann
+- name: SG-Share-HR-Confidential
+  kind: assigned
+  class: restricted
+  owner: hanna.brandt
+  members:
+  - hanna.brandt
+  - yusuf.demir
+  - katja.moser
+  - lena.hoffmann
+- name: SG-Prod-ReadOnly
+  kind: assigned
+  class: restricted
+  owner: jonas.keller
+  members:
+  - nina.petrova
+  - amira.haddad
+- name: GG-External-Contractors
+  kind: assigned
+  class: open
+  owner: marcus.weber
+  members: []
+admin_units:
+- name: AU-Workforce
+  kind: dynamic
+  rule: (user.userType -eq "Member") and (user.employeeType -eq "Employee")
+- name: RMAU-Protected
+  kind: restricted_management
+  members:
+  - priya.nair
+  - tom.becker
+  - sofia.rossi
+  - ${TENANT_ADMIN_UPN}
+  - ${BREAKGLASS_UPN}
+  - PRIV-User-Admin
+  - PRIV-Helpdesk-Admin
+  - PRIV-Security-Reader
+baselines:
+  all:
+  - SG-Wiki-All
+  - SG-VPN-Users
+  Engineering:
+  - SG-App-Jira
+  - SG-Share-Eng-Repos
+  Finance:
+  - SG-App-ERP-Read
+  - SG-Share-Finance-Reports
+  Sales:
+  - SG-App-CRM
+  - SG-Share-Sales-Collateral
+  IT: []
+  HR: []
+  Executive: []

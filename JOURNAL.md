@@ -247,3 +247,22 @@
 **Check.** No tracked file claims a report was filed. Three earlier commits that are already on `origin/main` (S10 spike, S10 follow-up, 0.10) still contain the old wording in their diffs; no commit message does. Correcting that would need a history rewrite and a force push, which is not done without an explicit decision.
 
 **Next.** 0.2 seed config.
+
+## 2026-10-19: Sprint 0, task 0.2 seed config
+
+**Done.** `seed/seed-org.md` (v0.3) is the source; `uv run python -m seed.generate_tenant` generates `seed/tenant.yaml` (header: generated, do not edit) with 22 users, 2 pre-hires, 21 groups, 2 admin accounts, the two administrative units, baselines and the license cap. `src/iamagents/seedconfig.py` loads it (pydantic), evaluates the dynamic rules and validates it. A test fails the build if the committed YAML differs from a fresh generation. The fake Graph org is now built from `tenant.yaml` too, so the markdown parsing in `fake_org` is gone and there is one source of truth. No tenant call.
+
+**Decisions.**
+* **Admin accounts.** Both already exist. They are referenced in `tenant.yaml` as `${TENANT_ADMIN_UPN}` and `${BREAKGLASS_UPN}`, resolved from `.env` at seed time (a missing variable is an error that names it), and never written to a committed file. No `breakglass2` is created. The agents never see them.
+* **`AU-Workforce` rule changed** to `(user.userType -eq "Member") and (user.employeeType -eq "Employee")`. A rule on `userType` alone would have put both admin accounts into the scope of the agents' write roles. Validation rule: no account that holds a directory role may match the rule (admin accounts, and members of the PRIV groups).
+* **Consequence the spec makes explicit:** Priya, Tom and Sofia hold roles through the PRIV groups, so they are seeded with `employeeType=Privileged`, not `Employee`. They leave `AU-Workforce` (19 members instead of 22) and are outside the agents' write scope for two independent reasons, the RMAU and the rule. They keep their department and department groups.
+* **Both admin accounts go into `RMAU-Protected`**, so tenant-wide application permissions cannot reach the emergency account either. The risk is a lock-out; spike S11 (task 0.4) verifies with the admin account first that a Global Administrator can still manage the RMAU and sign in, and only then adds the emergency account.
+* **IG-01 must set `employeeType=Employee`** (and `userType=Member`, `usageLocation=DE`) when it creates a joiner: policy IG-01 `create_attributes`, `PERMISSIONS.md` section 4 and the spec. Without it the new account is out of every agent's reach.
+* **Seat cap as a deliberate constraint.** `license_cap: 25` (policy `global.license_cap`) models the seats a startup bought. It is enforced by the gateway (IG-01 refuses a joiner at the cap) and by `seed.py`, and it does not depend on how many licenses the trial really grants. Seat accounting: the admin account takes one seat, the emergency access account none (not licensed), 22 employees take 22, E1 and E2 take the last two, so a third joiner fails until a leaver releases a seat. The SKU is resolved in 0.3.
+* **Domain.** `tenant.yaml` carries only the placeholder; the test that reads the real domain from `.env` also covers the new files.
+
+**Numbers.** 471 unit tests pass (45 new), ruff clean. Validation against `data/validate.py` and the policy found 0 problems on the first generation. Seven mutation checks (role-holder rule, RMAU membership, AU rule exactness, SoD, seat math, admin accounts in the RMAU, literal UPN) each fail a test.
+
+**Open.** `TENANT_ADMIN_UPN` and `BREAKGLASS_UPN` must be in `.env` before 0.3 (the user adds them). The licensed state of the admin account in the real tenant is checked in 0.3; if it is not licensed the seat arithmetic changes to 22 + 2 and the cap decision is revisited.
+
+**Next.** Run the IAM-007 smoke with `--isolated-config` and the skipped isolation test once the config dir login is done, then propose 0.3.
