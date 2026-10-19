@@ -280,3 +280,7 @@
 **Numbers.** 476 unit tests pass (5 new), ruff clean.
 
 **Open.** The user accepts the trust dialog for the repo in `state/claude-config` (run `claude` from the repo with `CLAUDE_CONFIG_DIR=state/claude-config`); then the smoke is rerun and the live tests `test_dedicated_config_dir_hides_user_skills_and_settings` and `test_only_our_skills_can_be_invoked` run.
+
+## 2026-10-19: Earlier wording corrected, no history rewrite
+
+The earlier journal and docs wording that said the token exposure was "reported to the vendor" was wrong, because no report was filed. It was corrected in the current files (commit `b13366b`). Three earlier commits on `origin/main` still contain the old wording in their diffs; the decision is to keep the forward fix and not rewrite or force-push history.
