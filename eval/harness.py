@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from iamagents import tenant
+from iamagents import launch, tenant
 from iamagents.gateway.audit import AuditLog
 from iamagents.gateway.config import ROOT, Settings
 from iamagents.gateway.core import Gateway
@@ -170,6 +170,10 @@ def run_eval(cfg: EvalConfig, log=print) -> dict:
     by_id = {t["ticket_id"]: t for t in tickets}
     selected, skipped = select_tickets(tickets, cfg)
     lock = check_heldout_guard(cfg, selected)
+    if cfg.use_config_dir and make_runner(cfg).name == "claude":
+        problem = launch.config_dir_problem()
+        if problem:  # an untrusted config dir would run every agent without its gateway tools
+            raise RunAborted(problem)
     label = cfg.label or f"{datetime.now(UTC):%Y%m%d-%H%M%S}-{cfg.agent}-{cfg.split}-{cfg.runner}"
     work_dir = cfg.work_base / label
     work_dir.mkdir(parents=True, exist_ok=True)

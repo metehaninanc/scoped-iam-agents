@@ -98,13 +98,13 @@ def bound(gateway):
 
 
 def run_claude(runtime, agent, prompt, tmp_path, *, extra=None, env_extra=None, max_turns=10):
-    env = launch.scrubbed_env(
-        extra={
-            "IAM_STATE_DIR": str(tmp_path / "state"),
-            "IAM_TRACE_PATH": str(tmp_path / "trace.jsonl"),
-            **(env_extra or {}),
-        }
-    )
+    extra_env = {
+        "IAM_STATE_DIR": str(tmp_path / "state"),
+        "IAM_TRACE_PATH": str(tmp_path / "trace.jsonl"),
+    }
+    if launch.config_dir_problem() is None:  # logged in and trusted: no user skills or settings
+        extra_env["CLAUDE_CONFIG_DIR"] = str(launch.CONFIG_DIR)
+    env = launch.scrubbed_env(extra={**extra_env, **(env_extra or {})})
     cmd = launch.claude_command(agent, prompt, max_turns=max_turns, extra=extra or [])
     proc = subprocess.run(
         cmd, cwd=runtime, env=env, stdin=subprocess.DEVNULL, capture_output=True,
@@ -298,15 +298,48 @@ def test_each_agent_has_exactly_the_expected_tools(bound, runtime, tmp_path, age
     assert GATEWAY_SERVERS[agent] in servers or not served  # its own server, when it serves tools
 
 
-@pytest.mark.skipif(not launch.config_dir_ready(), reason="no login in state/claude-config yet")
-def test_dedicated_config_dir_hides_user_skills_settings_and_connectors(bound, runtime, tmp_path):
-    r = run_claude(
-        runtime, "ds", "Reply with the single word ok.", tmp_path, max_turns=2,
-        env_extra={"CLAUDE_CONFIG_DIR": str(launch.CONFIG_DIR)},
-    )  # fmt: skip
+@pytest.mark.skipif(
+    launch.config_dir_problem() is not None,
+    reason="state/claude-config is not logged in and trusted yet",
+)
+def test_dedicated_config_dir_hides_user_skills_and_settings(bound, runtime, tmp_path):
+    """The dedicated config dir drops the developer's user skills, plugins and settings. The
+    claude.ai connectors are bound to the account that logs in, so they come back after the
+    login (seen as `claude.ai ...`, status pending). They are harmless to the agents because no
+    agent lists a connector tool and none has ToolSearch, which the exact tool list test pins."""
+    r = run_claude(runtime, "ds", "Reply with the single word ok.", tmp_path, max_turns=2)
     assert not [s for s in r["init"]["skills"] if s.startswith("anthropic-skills:")]
-    assert {m["name"] for m in r["init"]["mcp_servers"]} <= {"gw-ds"}, r["init"]["mcp_servers"]
+    names = {m["name"] for m in r["init"]["mcp_servers"]}
+    assert "gw-ds" in names, f"the gateway server is missing (workspace not trusted?): {names}"
+    assert {n for n in names if n != "gw-ds"} <= {n for n in names if n.startswith("claude.ai ")}, (
+        names
+    )
     assert r["init"]["plugins"] == []
+
+
+def test_only_our_skills_can_be_invoked(bound, runtime, tmp_path):
+    """Named Skill(...) allow rules: a skill of the session that is not ours is denied."""
+    prompt = (
+        "Invoke the skill named code-review with the Skill tool, then invoke the skill named "
+        "password-reset with the Skill tool. Report whether each one launched."
+    )
+    r = run_claude(runtime, "ds", prompt, tmp_path, max_turns=6)
+    calls = [i["skill"] for name, i, _ in tool_uses(r["events"]) if name == "Skill"]
+    if "code-review" not in calls:
+        pytest.skip("the model did not try the foreign skill, so the restriction was not exercised")
+    results = {c["tool_use_id"]: c for c in tool_results(r["events"])}
+    outcome = {}
+    for e in r["events"]:
+        if e.get("type") == "assistant":
+            for c in e["message"]["content"]:
+                if c["type"] == "tool_use" and c["name"] == "Skill":
+                    res = results.get(c["id"], {})
+                    outcome[c["input"]["skill"]] = not res.get("is_error") and "Launching" in str(
+                        res.get("content")
+                    )
+    assert outcome["code-review"] is False  # denied
+    if "password-reset" in outcome:
+        assert outcome["password-reset"] is True  # ours still works
 
 
 def test_dispatch_is_limited_to_the_four_agents(bound, runtime, tmp_path):

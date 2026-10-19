@@ -188,3 +188,35 @@ def test_gateway_url_is_rewritten_in_the_agent_files():
             assert "127.0.0.1:54321/mcp" in text and launch.DEFAULT_GATEWAY_URL not in text
     finally:
         launch.cleanup(path)
+
+
+def test_config_dir_problem_names_what_is_missing(tmp_path):
+    repo = tmp_path / "repo"
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    assert "not logged in" in launch.config_dir_problem(cfg, repo)
+    (cfg / ".credentials.json").write_text("{}", encoding="utf-8")
+    assert "missing or unreadable" in launch.config_dir_problem(cfg, repo)
+    (cfg / ".claude.json").write_text(json.dumps({"projects": {}}), encoding="utf-8")
+    assert "not trusted" in launch.config_dir_problem(cfg, repo)
+    key = str(repo).replace("\\", "/")
+    (cfg / ".claude.json").write_text(
+        json.dumps({"projects": {key: {"hasTrustDialogAccepted": False}}}), encoding="utf-8"
+    )
+    assert "not trusted" in launch.config_dir_problem(cfg, repo)
+    (cfg / ".claude.json").write_text(
+        json.dumps({"projects": {key: {"hasTrustDialogAccepted": True}}}), encoding="utf-8"
+    )
+    assert launch.config_dir_problem(cfg, repo) is None
+
+
+def test_config_dir_problem_matches_the_path_however_it_is_written(tmp_path):
+    repo = tmp_path / "Repo"
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    (cfg / ".credentials.json").write_text("{}", encoding="utf-8")
+    key = str(repo).replace("\\", "/").upper() + "/"
+    (cfg / ".claude.json").write_text(
+        json.dumps({"projects": {key: {"hasTrustDialogAccepted": True}}}), encoding="utf-8"
+    )
+    assert launch.config_dir_problem(cfg, repo) is None

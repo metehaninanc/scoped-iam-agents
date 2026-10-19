@@ -87,6 +87,29 @@ def config_dir_ready(path: Path = CONFIG_DIR) -> bool:
     return (path / ".credentials.json").exists()
 
 
+def config_dir_problem(path: Path = CONFIG_DIR, repo: Path = ROOT) -> str | None:
+    """Why the dedicated config dir cannot run the agents yet, or None when it can.
+
+    Two things are needed in it: a login, and the repo accepted in the trust dialog. Without
+    the trust, Claude Code silently skips the inline MCP servers of the agent files and the
+    agents run with no gateway tools at all (found in the first isolated smoke run).
+    """
+    how = f"run `claude` from {repo} with CLAUDE_CONFIG_DIR={path}"
+    if not config_dir_ready(path):
+        return f"not logged in in {path}: {how} and log in"
+    try:
+        state = json.loads((path / ".claude.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return f"{path / '.claude.json'} is missing or unreadable: {how}"
+    wanted = str(repo).replace("\\", "/").rstrip("/").lower()
+    for key, value in (state.get("projects") or {}).items():
+        if key.replace("\\", "/").rstrip("/").lower() == wanted and value.get(
+            "hasTrustDialogAccepted"
+        ):
+            return None
+    return f"the repository is not trusted in {path}: {how} and accept the trust dialog"
+
+
 def scrubbed_env(
     base: Mapping[str, str] | None = None, extra: Mapping[str, str] | None = None
 ) -> dict[str, str]:

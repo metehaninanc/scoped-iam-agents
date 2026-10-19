@@ -72,11 +72,28 @@ def test_settings_never_allow_them(tool):
     assert not [a for a in allow if a == tool or a.startswith(f"{tool}(")]
 
 
-def test_settings_allow_only_gateway_tools_agent_and_skill():
+def our_skills():
+    return {p.name for p in (RUNTIME / "skills").iterdir() if p.is_dir()}
+
+
+def test_settings_allow_only_gateway_tools_agent_and_our_own_skills():
     for entry in settings()["permissions"]["allow"]:
-        assert entry in ("Agent", "Skill") or re.fullmatch(
-            r"mcp__gw-(tl|ds|am|ig|pam)__\*", entry
+        named = re.fullmatch(r"Skill\(([\w-]+)\)", entry)
+        assert (
+            entry == "Agent"
+            or re.fullmatch(r"mcp__gw-(tl|ds|am|ig|pam)__\*", entry)
+            or (named and named.group(1) in our_skills())
         ), entry
+
+
+def test_the_skill_tool_is_allowed_for_our_skills_only():
+    """First isolated smoke run: an agent with no tools invoked code-review, init and
+    deep-research. A bare `Skill` allow rule permits every skill of the session; named rules
+    permit ours only."""
+    allow = settings()["permissions"]["allow"]
+    assert "Skill" not in allow
+    assert {e[6:-1] for e in allow if e.startswith("Skill(")} == our_skills()
+    assert len(our_skills()) == 8
 
 
 @pytest.mark.parametrize("name", AGENT_FILES)

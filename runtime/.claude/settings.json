@@ -7,7 +7,14 @@
       "mcp__gw-ig__*",
       "mcp__gw-pam__*",
       "Agent",
-      "Skill"
+      "Skill(access-request-evaluation)",
+      "Skill(group-change)",
+      "Skill(joiner-mover-leaver)",
+      "Skill(lockout-triage)",
+      "Skill(mfa-reset)",
+      "Skill(pam-package)",
+      "Skill(password-reset)",
+      "Skill(routing)"
     ],
     "deny": [
       "Bash",

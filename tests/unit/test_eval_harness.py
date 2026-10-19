@@ -485,3 +485,23 @@ def test_an_authentication_failure_aborts_the_run_instead_of_failing_every_ticke
     assert not list((tmp_path / "reports").rglob("*.md"))  # nothing written
     # only the first ticket was tried
     assert len([p for p in (tmp_path / "work" / "t").iterdir() if p.is_dir()]) == 1
+
+
+def test_an_untrusted_config_dir_aborts_before_any_ticket_runs(tmp_path, monkeypatch, fake_claude):
+    from eval.runners import RunAborted
+
+    monkeypatch.setattr(
+        launch, "config_dir_problem", lambda *a, **k: "the repository is not trusted in X: do Y"
+    )
+    c = cfg(tmp_path, agent="ds", split="dev", claude=fake_claude({}), use_config_dir=True)
+    with pytest.raises(RunAborted, match="not trusted"):
+        run_eval(c, log=lambda *_: None)
+    assert not list((tmp_path / "work").rglob("stream.jsonl"))  # no ticket was started
+
+
+def test_the_stub_ignores_the_config_dir_check(tmp_path, monkeypatch):
+    monkeypatch.setattr(launch, "config_dir_problem", lambda *a, **k: "never reached")
+    rep = run_eval(
+        cfg(tmp_path, agent="stub", ids=["IAM-005"], use_config_dir=True), log=lambda *_: None
+    )
+    assert rep["summary"]["tickets_run"] == 1

@@ -266,3 +266,17 @@
 **Open.** `TENANT_ADMIN_UPN` and `BREAKGLASS_UPN` must be in `.env` before 0.3 (the user adds them). The licensed state of the admin account in the real tenant is checked in 0.3; if it is not licensed the seat arithmetic changes to 22 + 2 and the cap decision is revisited.
 
 **Next.** Run the IAM-007 smoke with `--isolated-config` and the skipped isolation test once the config dir login is done, then propose 0.3.
+
+## 2026-10-19: First isolated smoke run, trust gap, skills narrowed
+
+**Done.** IAM-007 (routine DS-02, plan mode, fake Graph, haiku) ran with `--isolated-config` for the first time. It did not pass, and the reason was not the ticket logic.
+
+**Findings.**
+* **Dedicated config dir was logged in but the repo was not trusted in it** (`.claude.json` there has no `projects` entry). Claude Code then silently skips the inline MCP servers of the agent files: the agent had `Skill` and nothing else, and the init message showed only the account connector. This is the S10 trust finding in a new place. I did not mark the repo as trusted on the user's behalf; the trust dialog is theirs to accept. The harness now checks the config dir before the first ticket (`launch.config_dir_problem`: login present, repo trusted) and aborts with the exact command to run, so an untrusted config dir can never burn a run again.
+* **Account connectors come back after login.** Logging in to the dedicated config dir attaches the account's claude.ai connector (`claude.ai Claude Docs`, pending). The user skills, plugins and settings of the developer's own config stay out (24 visible skills, no `anthropic-skills:*`, no plugins). The connector is harmless as long as no agent lists a connector tool and none has `ToolSearch`, which the exact tool list test pins. If that ever has to be closed completely, the way is an API key through `apiKeyHelper` in the config dir instead of the claude.ai login (the key must not be in the environment).
+* **Skill reach showed up in practice.** An agent with no usable tools invoked `code-review`, `init` and `deep-research` through the `Skill` tool, one of them in a forked context. The settings allowed a bare `Skill`, which permits every skill of the session. `runtime/.claude/settings.json` now allows `Skill(<name>)` for our eight skills only; other skills are denied in headless mode (to be confirmed by the new live test `test_only_our_skills_can_be_invoked` once the config dir is trusted).
+* The schema hook did its job: the agent never produced a result object, so the ticket is a `schema_violation` failure, 79 s and 0.08 USD.
+
+**Numbers.** 476 unit tests pass (5 new), ruff clean.
+
+**Open.** The user accepts the trust dialog for the repo in `state/claude-config` (run `claude` from the repo with `CLAUDE_CONFIG_DIR=state/claude-config`); then the smoke is rerun and the live tests `test_dedicated_config_dir_hides_user_skills_and_settings` and `test_only_our_skills_can_be_invoked` run.
