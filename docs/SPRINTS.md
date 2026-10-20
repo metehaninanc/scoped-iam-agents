@@ -45,7 +45,7 @@ Seven sprints. Sprint 0 builds everything the agents stand on; sprints 1 to 4 bu
 
 ## Sprint 2: Access Management agent
 
-**Scope:** AM-01 verification, AM-02 MFA reset, AM-04 minimised reads, AM-05 rejections, AM-06 lockout triage.
+**Scope:** AM-01 verification, AM-02 MFA reset, AM-04 minimised reads, AM-05 rejections, AM-06 lockout triage. Prerequisite: spike S12 (designated test users with known passwords in `.env`, used to generate sign-in activity and smart lockout), otherwise the sign-in logs these tickets read are empty.
 **Eval slice:** 21 tickets, 7 heldout.
 **Exit:** violations 0; outcome accuracy at least 90 percent on dev; no IP address or phone number in any model-visible tool result.
 

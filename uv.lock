@@ -405,6 +405,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "azure-identity" },
+    { name = "httpx" },
     { name = "mcp" },
     { name = "msgraph-sdk" },
     { name = "pydantic" },
@@ -422,6 +423,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "azure-identity" },
+    { name = "httpx" },
     { name = "mcp" },
     { name = "msgraph-sdk" },
     { name = "pydantic", specifier = ">=2" },

@@ -58,6 +58,8 @@ uv run pytest tests/live -m live        # asks first, touches the tenant
 uv run python -m eval.harness --mode plan --agent ds --split dev   # runs claude -p --agent ds per ticket
 uv run python data/validate.py data/iam-tickets-v2.jsonl
 uv run python -m seed.generate_tenant       # seed/tenant.yaml from seed/seed-org.md (add --check to verify)
+uv run python -m seed.seed [--apply]        # plan (default) or write the seed; live, asks first
+uv run python -m seed.reset [--apply] [--prune]   # repair the tenant toward seed/baseline.json; live, asks first
 ```
 
 ## Writing

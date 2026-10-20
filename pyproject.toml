@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2",
     "pyyaml",
     "starlette",
+    "httpx",
     "uvicorn",
 ]
 
@@ -47,6 +48,9 @@ select = ["E", "F", "I", "B", "UP"]
 "eval/*" = ["E501"]  # report tables and help strings
 "tests/unit/test_eval_*.py" = ["E501"]
 "tests/unit/test_seed_config.py" = ["E501"]
+"tests/unit/test_seed_engine.py" = ["E501"]
+"tests/unit/test_seed_*.py" = ["E501"]
+"tests/unit/fake_graph_server.py" = ["E501"]
 "seed/*" = ["E501"]
 "src/iamagents/seedconfig.py" = ["E501"]  # long validation messages
 "tests/unit/test_tenant.py" = ["E501", "F811"]  # fixture imported from test_eval_harness
